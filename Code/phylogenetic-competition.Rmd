@@ -1,0 +1,2293 @@
+---
+title: "Untitled"
+output: github_document
+editor_options: 
+  chunk_output_type: console
+---
+
+##Loading
+
+```{r}
+library(openxlsx)
+library(data.table)
+library(devtools)
+library(vegan)
+library(lmerTest)
+library(performance)
+library(emmeans)
+library(multcomp)
+library(goeveg)
+library(viridis)
+library(glmmTMB)
+library(DHARMa)
+#devtools::install_github("jinyizju/V.PhyloMaker2")
+library(V.PhyloMaker2) #manually install if in lib
+#if (!require("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+#BiocManager::install("ggtree")
+library(ggtree) #manually install if in lib
+library(ape)
+library(picante)
+#remove.packages("geiger")
+#remotes::install_version("geiger", version = "2.0.9", repos = "http://cran.us.r-project.org")
+#devtools::install_github("eliotmiller/metricTester")
+library(geiger)
+library(metricTester)
+library(interactions)
+#BiocManager::install("ComplexHeatmap")
+library(ComplexHeatmap) #manually install if in lib
+library(tidyverse)
+
+MeanPlusSe<-function(x) mean(x)+plotrix::std.error(x)
+myCol <- viridis_pal(option = "G", begin = 0.175, end = 0.775, direction = -1)(4)
+myCol[5:8] <- viridis_pal(option = "A", begin = 0.35, end = .775, direction = -1)(4)
+scales::show_col(myCol)
+```
+
+COOP2_FH_P7 seems to be an outlier
+
+Phylogenetic analysis:
+
+1.  Load data into a common data frame
+
+2.  Load name key
+
+3.  Remove unknowns from raw data and name key
+
+4.  Check for Family matches in the appendix of V.PhyloMaker2 -
+    confirmed 9/23/22
+
+    1.  Check that all species are in the GBOTB.extended.WP.tre and list
+        related species accordingly
+
+    2.  Make tree using relatives; Senario.3 and BuildNodes.1 -
+        confirmed 10/01/22
+
+    3.  Check for genera that are not be monophyletic - confirmed
+        10/01/22 5. Make a phylogentic tree ultimetic
+
+```{r}
+COOP1Data<-read.xlsx("../Data/COOP1_weedsHighRes.xlsx")
+COOP2Data<-read.xlsx("../Data/COOP2_weedsHighRes.xlsx")
+COOP3Data<-read.xlsx("../Data/COOP3_weedsHighRes.xlsx")
+COOP4Data<-read.xlsx("../Data/COOP4_weedsHighRes.xlsx")
+
+COOP1Data$Block<-as.numeric(COOP1Data$Block)
+
+FullData<-bind_rows(COOP1Data,COOP2Data,COOP3Data,COOP4Data)
+#write.xlsx(FullData,"FullData.xlsx")
+```
+
+# Prep
+
+**Outcomes:**
+
+*Data frames*
+
+-   Full data includes cover crops and their biomass
+
+-   Weed data removed the six cover crop species to focus only on weed
+    communities
+
+*Modeling data*
+
+-   Abundance data: ...SpClean, ...SpClean_Sum, ...SpClean_Wint
+
+-   Phylogenetics: ...tree_boundDicot,...tree_boundDicot_Sum,
+    ...tree_boundDicot_Wint
+
+```{r data frames}
+# Abundance data----
+
+#Replace all NAs with 0
+FullData<-FullData %>% 
+    mutate(across(.cols = -c(Trial,Site,Year,Block,Plot,
+                           CoverCrop,CoverCropBiomass),
+                .fns = ~replace_na(.,0)))
+
+#Reset true NAs (COOP2_FH P14) and bind with 0-corrected data
+#Created "experiment" variable
+#Set factors and their labels
+FullData<-FullData %>% 
+    filter(Trial == "COOP2", Site == "Farm Hub", Plot == "14") %>%
+    mutate(across(.cols = -c(Trial,Site,Year,Block,Plot,CoverCrop,CoverCropBiomass),
+                  .fns = ~replace(.,.==0,NA))) %>%
+    rbind(FullData %>%
+            filter(!(Trial == "COOP2" & Site == "Farm Hub" & Plot == "14"))) %>% 
+    mutate(Experiment = case_when(
+              Trial %in% c("COOP1", "COOP3") ~ "Summer cover crops",
+              Trial %in% c("COOP2", "COOP4") ~ "Winter cover crops"),
+           across(.cols = c(Experiment,Trial,Site,Block,Year,CoverCrop),
+                  .fns = factor)) %>%
+    select(Experiment,Trial,Site,Year,Block,Plot,
+           CoverCrop,CoverCropBiomass, everything()) %>% 
+    arrange(Trial, Site,Plot)
+
+FullData$CoverCrop<-factor(FullData$CoverCrop,
+                            levels = c("Tilled","CAN","CR",
+                                      "HV","HVxCR","Buckwheat",
+                                      "SH","SS","SSxSH"),
+                            labels = c("Tilled","Canola","Cereal rye",
+                                      "Hairy vetch","HVxCR","Buckwheat",
+                                      "Sunn hemp","S. sudangrass", "SSxSH"))
+
+table(FullData$CoverCrop,FullData$Block,FullData$Trial,FullData$Site)
+
+#Removing cover crops from the weed data to focus only on weed communities
+##Confirmed that the cover crop columns are not weeds and can be removed
+WeedData <- FullData
+
+WeedDataTmp<-WeedData %>%
+  select(Trial,Site,Year,Block,Plot,
+         CoverCrop,
+         buckwheat,sun.hemp,sorghum.sudangrass,
+         canola,cereal.rye,hairy.vetch,
+         CoverCropBiomass) %>% 
+  mutate(CoverCropBiomass2=
+           buckwheat+sun.hemp+sorghum.sudangrass+
+           canola+cereal.rye+hairy.vetch,
+         CoverCropBiomass2=round(CoverCropBiomass2,2))
+WeedDataTmp[which((round(WeedDataTmp$CoverCropBiomass,2) == WeedDataTmp$CoverCropBiomass2) == FALSE),]
+
+WeedData <- WeedData %>% 
+  select(-c(buckwheat,sun.hemp,sorghum.sudangrass,
+         canola,cereal.rye,hairy.vetch))
+
+# Species for phylo----
+
+# "_weed" removes the cover crop species
+# Data to make phylogentic trees
+NameKey<-read.xlsx("../Data/NameKey.xlsx")
+SpeciesList<-NameKey[!is.na(NameKey$species),2:6] #five unknown spp. removed
+FamilyList<-read.csv("../Data/FamilyList.csv")
+
+# Six cover crops removed to focus only on weed communities
+NameKey_weed<-NameKey %>% 
+  filter(!CommonName %in% c("buckwheat","sun.hemp","sorghum.sudangrass",
+         "canola","cereal.rye","hairy.vetch"))
+SpeciesList_weed<-NameKey_weed[!is.na(NameKey_weed$species),2:6]
+```
+
+```{r name cleaning and data frame creation for alpha diversity}
+# Full----
+##  Checking if common names match between abundance data and phylo data- looks good
+sort(colnames(FullData[9:80]))[which(sort(colnames(FullData[9:74])) %in% sort(NameKey$CommonName) == FALSE)]
+
+##  joining volunteer buckwheat, volunteer c. rye, and volunteer canola to their species to allow for the pivots
+### Inspecting the plots where the volunteers occur to confirm that they are not also the CC treatment - good
+FullData %>% 
+  select("buckwheat","volunteer.buckwheat",
+         "canola", "volunteer.canola",
+         "cereal.rye", "volunteer.cereal.rye") %>% 
+  filter(volunteer.buckwheat | volunteer.canola | volunteer.cereal.rye > 0)
+
+FullDataTmp.NoVol<-FullData %>% 
+  mutate(buckwheat = buckwheat + volunteer.buckwheat,
+         canola = canola + volunteer.canola,
+         cereal.rye = cereal.rye + volunteer.cereal.rye,
+         volunteer.buckwheat = NULL,
+         volunteer.canola = NULL,
+         volunteer.cereal.rye = NULL)
+
+##  Pivoting the abundance data for the join
+FullDataTmp<-pivot_longer(FullDataTmp.NoVol,
+             cols = -c(Experiment,Trial,Site,Year,Block,Plot,
+                       CoverCrop,CoverCropBiomass),
+             names_to = "Species",
+             values_to = "Biomass_g0.5m2")
+
+##  logical test of pivot_long made a dataframe of the correct size- it looks good!
+nrow(FullDataTmp) == ncol(select(FullDataTmp.NoVol,-c(Experiment,Trial,Site,Year,Block,Plot,CoverCrop,CoverCropBiomass)))*160
+
+##  join and remove unknowns
+FullDataTmp2 <- left_join(FullDataTmp,NameKey,by = c("Species" = "CommonName"))
+FullDataTmp3 <- FullDataTmp2 %>% 
+  select(-c(Species,genus,family,species.relative,genus.relative)) %>% 
+  filter(!species %in% NA) %>% 
+  mutate(species=str_replace(species," ","_"))
+
+FullDataTmp4<-pivot_wider(FullDataTmp3,names_from = "species",values_from = "Biomass_g0.5m2")
+
+#Confirming pivot_wider
+##Values - confirmed
+rowSums(FullDataTmp4[,9:72]) %in%
+rowSums(FullDataTmp.NoVol %>% 
+  select(-c(starts_with("unknown") | ends_with("spp.") | ends_with("spp"))) %>% 
+  select(-c(Experiment,Trial,Site,Year,Block,Plot,CoverCrop,CoverCropBiomass)))
+
+#Creation of abundance data with Latin names
+FullSp<-FullDataTmp4 %>% 
+  mutate(rowname=paste(Experiment,Trial,Site,Year,Block,Plot,CoverCrop,sep = "_")) %>% 
+  select(-c(Experiment,Trial,Site,Year,Block,Plot,CoverCrop,CoverCropBiomass)) %>% 
+  column_to_rownames(var = "rowname")
+
+#Removed missing sample
+FullSpClean<-FullSp[-c(which(rownames(FullSp)== "Winter cover crops_COOP2_Farm Hub_2021_3_14_Tilled")),]
+
+FullSpClean_Wint<-FullSpClean[rownames(FullSpClean) %like% "Winter cover crops",]
+FullSpClean_Wint<-FullSpClean_Wint[,which(colSums(FullSpClean_Wint)>0)]
+
+FullSpClean_Sum<-FullSpClean[rownames(FullSpClean) %like% "Summer cover crops",]
+FullSpClean_Sum<-FullSpClean_Sum[,which(colSums(FullSpClean_Sum)>0)]
+
+# _Weed----
+#Checking if common names match between abundance data and phylo data- looks good
+sort(colnames(WeedData[9:74]))[which(sort(colnames(WeedData[9:74])) %in% sort(NameKey_weed$CommonName) == FALSE)]
+
+#Pivoting the abundance data for the join
+WeedDataTmp<-pivot_longer(WeedData,
+             cols = -c(Experiment,Trial,Site,Year,Block,Plot,CoverCrop,CoverCropBiomass),
+             names_to = "Species",
+             values_to = "Biomass_g0.5m2")
+
+#logical test of pivot_long made a dataframe of the correct size- it looks good!
+nrow(WeedDataTmp) == ncol(select(WeedData,-c(Experiment,Trial,Site,Year,Block,Plot,CoverCrop,CoverCropBiomass)))*160
+
+#join and remove unknowns
+WeedDataTmp2 <- left_join(WeedDataTmp,NameKey_weed,by = c("Species" = "CommonName"))
+WeedDataTmp3 <- WeedDataTmp2 %>% 
+  select(-c(Species,genus,family,species.relative,genus.relative)) %>% 
+  filter(!species %in% NA) %>% 
+  mutate(species=str_replace(species," ","_"))
+
+WeedDataTmp4<-pivot_wider(WeedDataTmp3,names_from = "species",values_from = "Biomass_g0.5m2")
+
+#Confirming pivot_wider
+##Values - confirmed
+rowSums(WeedDataTmp4[,9:69]) %in%
+rowSums(WeedData %>% 
+  select(-c(starts_with("unknown") | ends_with("spp.") | ends_with("spp"))) %>% 
+  select(-c(Experiment,Trial,Site,Year,Block,Plot,CoverCrop,CoverCropBiomass)))
+
+#Names compaired to phylo tree - confirmed
+##tree_boundDicot$tip.label %in% colnames(WeedDataTmp4[,9:69])
+
+#Creation of abundance data with Latin names
+WeedSp<-WeedDataTmp4 %>% 
+  mutate(rowname=paste(Experiment,Trial,Site,Year,Block,Plot,CoverCrop,sep = "_")) %>% 
+  select(-c(Experiment,Trial,Site,Year,Block,Plot,CoverCrop,CoverCropBiomass)) %>% 
+  column_to_rownames(var = "rowname")
+
+#Removed missing sample
+WeedSpClean<-WeedSp[-c(which(rownames(WeedSp)== "Winter cover crops_COOP2_Farm Hub_2021_3_14_Tilled")),]
+
+WeedSpClean_Wint<-WeedSpClean[rownames(WeedSpClean) %like% "Winter cover crops",]
+WeedSpClean_Wint<-WeedSpClean_Wint[,which(colSums(WeedSpClean_Wint)>0)]
+
+WeedSpClean_Sum<-WeedSpClean[rownames(WeedSpClean) %like% "Summer cover crops",]
+WeedSpClean_Sum<-WeedSpClean_Sum[,which(colSums(WeedSpClean_Sum)>0)]
+```
+
+```{r phylo trees}
+# Creation----
+## Full----
+Full.relativesBound <- bind.relative(sp.list = SpeciesList,
+                                tree = GBOTB.extended.WP,
+                                nodes = nodes.info.1.WP)
+
+Full.tree_bound <- phylo.maker(sp.list = Full.relativesBound$species.list,
+                        tree = Full.relativesBound$phylo,
+                        nodes = Full.relativesBound$nodes.info,
+                        scenarios="S3")
+
+is.binary(Full.tree_bound$scenario.3)
+Full.tree_boundDicot<-multi2di(Full.tree_bound$scenario.3)
+is.ultrametric(Full.tree_boundDicot)
+
+## _weed----
+#No binding of relatives
+#tree_unbound <- phylo.maker(sp.list = SpeciesList_weed,
+#                            tree = GBOTB.extended.WP,
+#                            nodes = nodes.info.1.WP, scenarios = "S3")
+
+#ggtree(tree_unbound$scenario.3)+
+#  geom_tiplab()+
+#  scale_x_continuous(expand = expansion(mult = 0.5))+
+#  labs(title="Unbound tree")
+
+#Bond relatives - helps specify distances. I will use
+relativesBound <- bind.relative(sp.list = SpeciesList_weed,
+                                tree = GBOTB.extended.WP,
+                                nodes = nodes.info.1.WP)
+
+tree_bound<-phylo.maker(sp.list = relativesBound$species.list,
+                        tree = relativesBound$phylo,
+                        nodes = relativesBound$nodes.info, scenarios="S3")
+
+#The tree has a polytom in the Poa, which is randomly solved using multi2di()
+is.binary(tree_bound$scenario.3)
+
+#Corrected tree is ultrametric, which fulfills models that assume constant variance and equal means at the tip
+tree_boundDicot<-multi2di(tree_bound$scenario.3)
+is.binary(tree_boundDicot)
+is.ultrametric(tree_boundDicot)
+
+
+
+# Visualization----
+## Full----
+### Example
+Full.tree <- phylo.maker(sp.list = SpeciesList,
+                 tree = GBOTB.extended.WP,
+                 nodes = nodes.info.1.WP, scenarios = "S3")
+
+Full.groupInfoFamily<-split(
+  str_replace(SpeciesList$species," ","_"),
+  SpeciesList$family)
+
+### Clean
+Full.tree_boundDicot<-groupOTU(Full.tree_boundDicot,Full.groupInfoFamily)
+
+ggtree(Full.tree_boundDicot) + 
+  geom_tiplab(aes(color = group)) +
+  scale_x_continuous(expand = expansion(mult = 0.5)) +
+  labs(title="Bound ultrametric tree colored by familes",
+       color = "Family")
+
+### Winter cover crop trial
+Full.tree_boundDicot.Wint <- drop.tip(phy = Full.tree_boundDicot,
+                                 tip = setdiff(Full.tree_boundDicot$tip.label,
+                                               colnames(FullSpClean_Wint)))
+
+Full.tree_boundDicot.Wint<-groupOTU(Full.tree_boundDicot.Wint,Full.groupInfoFamily)
+
+ggtree(Full.tree_boundDicot.Wint, layout = "fan") + 
+  geom_tiplab(aes(color = group)) +
+  scale_x_continuous(expand = expansion(mult = 0.5)) +
+  theme(legend.position = "none")
+  #labs(title="Winter cover crop trial",
+       #color = "Family")
+
+###  Summer cover crop trial
+Full.tree_boundDicot.Sum <- drop.tip(phy = Full.tree_boundDicot,
+                                 tip = setdiff(Full.tree_boundDicot$tip.label,
+                                               colnames(FullSpClean_Sum)))
+
+Full.tree_boundDicot.Sum<-groupOTU(Full.tree_boundDicot.Sum,Full.groupInfoFamily)
+
+ggtree(Full.tree_boundDicot.Sum) + 
+  geom_tiplab(aes(color = group)) +
+  scale_x_continuous(expand = expansion(mult = 0.5)) +
+  labs(title="Summer cover crop trial",
+       color = "Family")
+
+## _weed----
+### Both experiments
+groupInfoFamily<-split(
+  str_replace(SpeciesList_weed$species," ","_"),
+  SpeciesList_weed$family)
+
+tree_boundDicot<-groupOTU(tree_boundDicot,groupInfoFamily)
+
+ggtree(tree_boundDicot) + 
+  geom_tiplab(aes(color = group)) +
+  scale_x_continuous(expand = expansion(mult = 0.5)) +
+  labs(title="Bound ultrametric tree colored by familes",
+       color = "Family")
+
+### Winter cover crop trial
+tree_boundDicot.Wint <- drop.tip(phy = tree_boundDicot,
+                                 tip = setdiff(tree_boundDicot$tip.label,
+                                               colnames(WeedSpClean_Wint)))
+
+tree_boundDicot.Wint<-groupOTU(tree_boundDicot.Wint,groupInfoFamily)
+
+ggtree(tree_boundDicot.Wint) + 
+  geom_tiplab(aes(color = group)) +
+  scale_x_continuous(expand = expansion(mult = 0.5)) +
+  labs(title="Winter cover crop trial",
+       color = "Family")
+
+###  Summer cover crop trial
+tree_boundDicot.Sum <- drop.tip(phy = tree_boundDicot,
+                                tip = setdiff(tree_boundDicot$tip.label,
+                                              colnames(WeedSpClean_Sum)))
+
+tree_boundDicot.Sum<-groupOTU(tree_boundDicot.Sum,groupInfoFamily)
+
+ggtree(tree_boundDicot.Sum) + 
+  geom_tiplab(aes(color = group)) +
+  scale_x_continuous(expand = expansion(mult = 0.5)) +
+  labs(title="Summer cover crop trial",
+       color = "Family")
+```
+
+## Analysis
+
+### Alpha Diversity
+####    Calculation
+```{r}
+# Calculation----
+##  Full----
+FullDist <- cophenetic(Full.tree_boundDicot)
+Full.inter.mpd <- modifiedMPD(FullSpClean, FullDist,
+                              abundance.weighted="interspecific")
+
+Full.inter.mpd <- replace_na(Full.inter.mpd,0)
+AlphaAnalysisTmp.Full <- data.frame(Trt = rownames(FullSpClean),Full.inter.mpd)
+
+### Adding treatment info
+AlphaAnalysis.Full <- AlphaAnalysisTmp.Full %>% 
+  separate(col = Trt,
+           into = c("Experiment","Trial","Site","Year", "Block","Plot","CoverCrop"),
+           sep="_") %>% 
+  mutate(SiteYear = paste(Site,Trial,sep = "_"),
+         across(.cols = c(Experiment,Trial,Site,Block,Year,CoverCrop,SiteYear),
+                .fns = factor))
+
+AlphaAnalysis.Full$CoverCrop <- factor(AlphaAnalysis.Full$CoverCrop,
+                                  levels = c("Tilled","Canola","Cereal rye",
+                                             "Hairy vetch","HVxCR","Buckwheat",
+                                             "Sunn hemp","S. sudangrass", "SSxSH"))
+###  Adding cover crop biomass
+AlphaAnalysis.Full$Plot<-as.numeric(AlphaAnalysis.Full$Plot)
+AlphaAnalysis.Full<-left_join(AlphaAnalysis.Full,FullDataTmp4[,1:8])
+
+##  Weed----
+WeedDist <- cophenetic(tree_boundDicot)
+inter.mpd <- modifiedMPD(WeedSpClean, WeedDist, abundance.weighted="interspecific")
+
+###  The NAs are samples with 0 or 1 weed species, this would be a distance of 0
+####  Confirmation
+WeedSpClean2 <- WeedSpClean
+WeedSpClean2[WeedSpClean2>0] <-1
+which(rowSums(WeedSpClean2) <=1) %in% which(paste(inter.mpd) == "NA")
+####  Replace NA with 0
+inter.mpd <- replace_na(inter.mpd,0)
+AlphaAnalysisTmp <- data.frame(Trt = rownames(WeedSpClean),inter.mpd)
+
+### Adding treatment info
+AlphaAnalysis <- AlphaAnalysisTmp %>% 
+  separate(col = Trt,
+           into = c("Experiment","Trial","Site","Year", "Block","Plot","CoverCrop"),
+           sep="_") %>% 
+  mutate(SiteYear = paste(Site,Trial,sep = "_"),
+         across(.cols = c(Experiment,Trial,Site,Block,Year,CoverCrop,SiteYear),
+                .fns = factor))
+
+AlphaAnalysis$CoverCrop <- factor(AlphaAnalysis$CoverCrop,
+                                  levels = c("Tilled","Canola","Cereal rye",
+                                             "Hairy vetch","HVxCR","Buckwheat",
+                                             "Sunn hemp","S. sudangrass", "SSxSH"))
+###  Adding cover crop biomass
+AlphaAnalysis$Plot<-as.numeric(AlphaAnalysis$Plot)
+AlphaAnalysisWeed<-left_join(AlphaAnalysis,WeedDataTmp4[,1:8])
+
+# Data frame creation----
+##  Full----
+###  All treatments
+AlphaAnalysis.Full <- AlphaAnalysis.Full %>%
+  select(Experiment,Trial,SiteYear,Site,Year,Block,Plot,
+         CoverCrop,CoverCropBiomass,everything())
+
+AlphaAnalysisWint.Full <- AlphaAnalysis.Full %>% 
+  filter(Experiment == "Winter cover crops")
+AlphaAnalysisWint.Full <- droplevels(AlphaAnalysisWint.Full)
+
+AlphaAnalysisSum.Full <- AlphaAnalysis.Full %>% 
+  filter(Experiment == "Summer cover crops")
+AlphaAnalysisSum.Full <- droplevels(AlphaAnalysisSum.Full)
+AlphaAnalysisSum.Full$CoverCrop <- factor(AlphaAnalysisSum.Full$CoverCrop,
+                                          levels = c("Tilled","Buckwheat","S. sudangrass",
+                                                     "Sunn hemp","SSxSH"))
+
+###  Cover crops only
+AlphaAnalysisWint_CC.Full <- AlphaAnalysisWint.Full %>% 
+  filter(CoverCrop != "Tilled")
+AlphaAnalysisWint_CC.Full <- droplevels(AlphaAnalysisWint_CC.Full)
+
+AlphaAnalysisSum_CC.Full <- AlphaAnalysisSum.Full %>% 
+  filter(CoverCrop != "Tilled")
+AlphaAnalysisSum_CC.Full <- droplevels(AlphaAnalysisSum_CC.Full)
+
+##  Weed----
+###  All treatments
+AlphaAnalysisWeed <- AlphaAnalysisWeed %>%
+  select(Experiment,Trial,SiteYear,Site,Year,Block,Plot,
+         CoverCrop,CoverCropBiomass,everything())
+
+AlphaAnalysisWint <- AlphaAnalysisWeed %>% 
+  filter(Experiment == "Winter cover crops")
+AlphaAnalysisWint <- droplevels(AlphaAnalysisWint)
+
+AlphaAnalysisSum <- AlphaAnalysisWeed %>% 
+  filter(Experiment == "Summer cover crops")
+AlphaAnalysisSum <- droplevels(AlphaAnalysisSum)
+AlphaAnalysisSum$CoverCrop <- factor(AlphaAnalysisSum$CoverCrop,
+                                     levels = c("Tilled","Buckwheat",
+                                                "S. sudangrass","Sunn hemp","SSxSH"))
+
+###  Cover crops only
+AlphaAnalysisWint_CC <- AlphaAnalysisWint %>% 
+  filter(CoverCrop != "Tilled")
+AlphaAnalysisWint_CC <- droplevels(AlphaAnalysisWint_CC)
+
+AlphaAnalysisSum_CC <- AlphaAnalysisSum %>% 
+  filter(CoverCrop != "Tilled")
+AlphaAnalysisSum_CC <- droplevels(AlphaAnalysisSum_CC)
+
+##  Combination -only with data that excluded the control----
+### Winter
+AlphaAnalysisWint_CC.Full$CC.Pres <- "Yes"
+AlphaAnalysisWint_CC.Full <- rename(AlphaAnalysisWint_CC.Full,
+                                    inter.mpd = Full.inter.mpd)
+AlphaAnalysisWint_CC$CC.Pres <- "No"
+CC_DirrectionDataWint <- bind_rows(AlphaAnalysisWint_CC.Full,
+                                   AlphaAnalysisWint_CC)
+CC_DirrectionDataWint$CC.Pres <- as.factor(CC_DirrectionDataWint$CC.Pres)
+
+### Summer
+
+AlphaAnalysisSum_CC.Full$CC.Pres <- "Yes"
+AlphaAnalysisSum_CC.Full <- rename(AlphaAnalysisSum_CC.Full,
+                                    inter.mpd = Full.inter.mpd)
+AlphaAnalysisSum_CC$CC.Pres <- "No"
+CC_DirrectionDataSum <- bind_rows(AlphaAnalysisSum_CC.Full,
+                                   AlphaAnalysisSum_CC)
+CC_DirrectionDataSum$CC.Pres <- as.factor(CC_DirrectionDataSum$CC.Pres)
+```
+
+Confirmation that using a regional tree *does not* affect interspecific MPD. What I did to test was to creat trees from subsets of the data and an individual sample and did not find that the interspecific MPD was different. 
+
+Some edits to the data frame WeedSpFHClean had to be made in 2025 to get the chunck to run, just specifying -1. Not sure if this will affect the test...
+```{r eval=FALSE, include=FALSE}
+# Sites----
+
+WeedSpFH<-WeedDataTmp4 %>% 
+  filter(Site == "Farm Hub") %>%
+  mutate(rowname=paste(Trial,Site,Year,Block,Plot,CoverCrop,sep = "_")) %>% 
+  select(-c(Trial,Site,Year,Block,Plot,CoverCrop,CoverCropBiomass)) %>% 
+  column_to_rownames(var = "rowname")
+
+WeedSpFHClean<-WeedSpFH[-c(which(rownames(WeedSpFH)== "COOP2_Farm Hub_2021_3_14_Tilled")),]
+WeedSpFHClean<-WeedSpFHClean[,which(colSums(WeedSpFHClean[,-1])>0)]
+
+tree_boundDicot.FH <- drop.tip(phy = tree_boundDicot,
+                               tip = setdiff(tree_boundDicot$tip.label,
+                                             colnames(WeedSpFHClean)))
+
+
+WeedDistFH <- cophenetic(tree_boundDicot.FH)
+inter.mpdFH <- modifiedMPD(WeedSpFHClean[,-1], WeedDistFH, abundance.weighted="interspecific")
+inter.mpdFH <- replace_na(inter.mpdFH,0)
+AlphaAnalysisTmpFH <- data.frame(Trt = rownames(WeedSpFHClean),inter.mpdFH)
+
+AlphaAnalysisFH <- AlphaAnalysisTmpFH %>% 
+  separate(col = Trt,
+           into = c("Trial","Site","Year", "Block","Plot","CoverCrop"),
+           sep="_") %>% 
+  mutate(across(.cols = c(Trial,Site,Block,Year,CoverCrop),
+                .fns = factor))
+
+AlphaAnalysisFH$CoverCrop <- factor(AlphaAnalysisFH$CoverCrop,
+                                  levels = c("Tilled","Canola","Cereal rye",
+                                             "Hairy vetch","HVxCR","Buckwheat",
+                                             "Sunn hemp","S. sudangrass", "SSxSH"))
+
+round(AlphaAnalysisFH$inter.mpdFH) %in% round(AlphaAnalysis$inter.mpd) #confirmed 10/2/2022
+# Trials----
+
+WeedDistWint2 <- cophenetic(tree_boundDicot.Wint)
+inter.mpdWint2 <- modifiedMPD(WeedSpClean_Wint, WeedDistWint2,
+                              abundance.weighted="interspecific")
+inter.mpdWint2 <- replace_na(inter.mpdWint2,0)
+AlphaAnalysisTmpWint2 <- data.frame(Trt = rownames(WeedSpClean_Wint),inter.mpdWint2)
+
+AlphaAnalysisWint2 <- AlphaAnalysisTmpWint2 %>% 
+  separate(col = Trt,
+           into = c("Experiment","Trial","Site","Year", "Block","Plot","CoverCrop"),
+           sep="_") %>% 
+  mutate(across(.cols = c(Trial,Site,Block,Year,CoverCrop),
+                .fns = factor))
+
+AlphaAnalysisWint2$CoverCrop <- factor(AlphaAnalysisWint2$CoverCrop,
+                                  levels = c("Tilled","Canola","Cereal rye",
+                                             "Hairy vetch","HVxCR","Buckwheat",
+                                             "Sunn hemp","S. sudangrass", "SSxSH"))
+
+round(AlphaAnalysisWint2$inter.mpdWint2) %in% round(AlphaAnalysis$inter.mpd) #confirmed 10/10/2022
+# One sample ----
+##  Data creation
+Tester<-WeedSpClean_Wint[1,]
+Tester<-Tester[,which(colSums(Tester)>0)]
+
+
+SpeciesList_weed.Tester <- SpeciesList_weed[
+  which(str_replace(SpeciesList_weed$species," ","_") 
+        %in% colnames(Tester)),]
+colnames(Tester) %in% str_replace(SpeciesList_weed.Tester$species," ","_")
+
+relativesBound.Tester <- bind.relative(sp.list = SpeciesList_weed.Tester,
+                                tree = GBOTB.extended.WP,
+                                nodes = nodes.info.1.WP)
+
+tree_bound.Tester<-phylo.maker(sp.list = relativesBound.Tester$species.list,
+                        tree = relativesBound.Tester$phylo,
+                        nodes = relativesBound.Tester$nodes.info, scenarios="S3")
+
+is.ultrametric(tree_bound.Tester$scenario.3)
+plot(tree_bound.Tester$scenario.3)
+
+##  inter.mpd calculation
+WeedDist.Tester <- cophenetic(tree_bound.Tester$scenario.3)
+inter.mpd.Tester <- modifiedMPD(Tester, WeedDist.Tester,
+                              abundance.weighted="interspecific")
+AlphaAnalysisTmp.Tester <- data.frame(Trt = rownames(Tester),inter.mpd.Tester)
+
+AlphaAnalysis.Tester <- AlphaAnalysisTmp.Tester %>% 
+  separate(col = Trt,
+           into = c("Experiment","Trial","Site","Year", "Block","Plot","CoverCrop"),
+           sep="_") %>% 
+  mutate(across(.cols = c(Trial,Site,Block,Year,CoverCrop),
+                .fns = factor))
+
+AlphaAnalysis.Tester$CoverCrop <- factor(AlphaAnalysis.Tester$CoverCrop,
+                                  levels = c("Tilled","Canola","Cereal rye",
+                                             "Hairy vetch","HVxCR","Buckwheat",
+                                             "Sunn hemp","S. sudangrass", "SSxSH"))
+
+round(AlphaAnalysis.Tester$inter.mpd.Tester,4) %in% round(AlphaAnalysis$inter.mpd,4)
+ #confirmed 10/11/2022
+```
+
+#### Modeling
+
+All modeling was done using data separated by winter and summer cash crop trial because the tilled control represented different weed communities *and* the cover crop species were different so its imposible to have a trial*treatment interaction. 
+
+1.    **Comparison** between the control and the treatments (Use all data)
+
+2.    Effect of cover crop **biomass** (control dropped to avoid singularity)
+
+3.    Do cover crops have a **directional** effect? (control dropped to avoid singularity, null model used)
+
+```{r compairason}
+#glmer(gaussian(link = "log")) used because it had the best fit and the most logical results
+
+# Winter----
+ContMod1_Wint <- lmer(inter.mpd ~ Site*CoverCrop+(1|SiteYear/Block),
+             data=AlphaAnalysisWint)
+summary(ContMod1_Wint)
+plot(ContMod1_Wint)
+#check_model(ContMod1_Wint)
+anova(ContMod1_Wint)
+
+ContMod2_Wint <- glmmTMB(inter.mpd ~ Site*CoverCrop+(1|SiteYear/Block),
+                 family = tweedie(),
+                 data = AlphaAnalysisWint)
+simulateResiduals(ContMod2_Wint,plot = TRUE) #no indication of improved fit
+car::Anova(ContMod2_Wint,type = 3)
+
+ContMod3_Wint <- update(ContMod2_Wint, family = gaussian(link = "log"), start = list(beta = rep(0,10)))
+simulateResiduals(ContMod3_Wint,plot = TRUE) #no indication of improved fit
+car::Anova(ContMod3_Wint,type = 3) #Will use
+
+# Summer----
+ContMod1_Sum <- lmer(inter.mpd ~ Site*CoverCrop+(1|SiteYear/Block),
+             data=AlphaAnalysisSum)
+summary(ContMod1_Sum)
+plot(ContMod1_Sum)
+anova(ContMod1_Sum)
+
+ContMod2_Sum <- glmmTMB(inter.mpd ~ Site*CoverCrop+(1|SiteYear/Block),
+                 family = tweedie(),
+                 data = AlphaAnalysisSum)
+simulateResiduals(ContMod2_Sum,plot = TRUE) #no indication of improved fit
+car::Anova(ContMod2_Sum,type = 3)
+
+ContMod3_Sum <- update(ContMod2_Sum, family = gaussian(link = "log"), start = list(beta = rep(0,10)))
+simulateResiduals(ContMod3_Sum,plot = TRUE) #no indication of improved fit
+car::Anova(ContMod3_Sum,type = 3) #Will use
+
+# Viz----
+##  Winter
+interMPDLettersWint<-cld(emmeans(ContMod3_Wint,~CoverCrop),
+                     sort=T,Letters="abcde",adjust="none", reversed= TRUE)
+
+WintFilteringFig<-
+left_join(AlphaAnalysisWint,interMPDLettersWint) %>% 
+ggplot(.,aes(CoverCrop,inter.mpd,fill=CoverCrop))+
+  geom_blank(aes(y=mean(inter.mpd)*1.5))+
+  stat_summary(geom = "bar",fun = "mean")+
+  stat_summary(geom = "errorbar",fun.data = "mean_se",width = .1)+
+  stat_summary(geom="text",fun = "MeanPlusSe",
+               aes(label=trimws(.group)),size=6,vjust = -0.5)+
+  scale_fill_viridis(discrete=TRUE,direction = -1,option = "A",
+                     begin = .25,end = .9, alpha=.975)+
+  scale_x_discrete(labels = c("Tilled","Canola","Cereal rye\n(CR)",
+                              "Hairy vetch\n(HV)","CR x HV"))+
+  guides(size = "none")+
+  labs(x = NULL, y = "Interspecific MPD", fill ="Cover crop")+
+  theme_bw(base_size = 16)+
+  theme(legend.position = "none")+
+  facet_grid(~"Winter cover crops")
+
+##  Summer
+interMPDLettersSum<-cld(emmeans(ContMod3_Sum,~CoverCrop),
+                     sort=T,Letters="abcde",adjust="none", reversed= TRUE)
+
+SummerFilteringFig<-
+left_join(AlphaAnalysisSum,interMPDLettersSum) %>% 
+ggplot(.,aes(CoverCrop,inter.mpd,fill=CoverCrop))+
+  geom_blank(aes(y=mean(inter.mpd)*1.25))+
+  stat_summary(geom = "bar",fun = "mean")+
+  stat_summary(geom = "errorbar",fun.data = "mean_se",width = .1)+
+  stat_summary(geom="text",fun = "MeanPlusSe",
+               aes(label=trimws(.group)),size=6,vjust = -0.5)+
+  scale_fill_viridis(discrete=TRUE,direction = -1,option = "A",
+                     begin = .25,end = .9, alpha=.975)+
+  scale_x_discrete(labels = c("Tilled","Buckwheat","Sorghum\nsudangrass\n(SS)",
+                              "Sunn hemp\n(SH)", "SS x SH"))+
+  guides(size = "none")+
+  labs(x = "Treatment", y = "Interspecific MPD", fill ="Cover crop")+
+  theme_bw(base_size = 16)+
+  theme(legend.position = "none")+
+  facet_grid(~"Summer cover crops")
+
+#pdf("Figures (450dpi)/FilteringFig.pdf",width = 6, height = 10)
+gridExtra::grid.arrange(WintFilteringFig,SummerFilteringFig)
+#dev.off()
+```
+
+```{r biomass}
+#lmer used because it was the only model to fit Stephan Perry from CSCU approved *fit* 11/14/22
+
+# Winter----
+BioMod1_Wint <- lmer(inter.mpd ~ Site*CoverCropBiomass*CoverCrop+(1|SiteYear/Block),
+             data=AlphaAnalysisWint_CC)
+plot(BioMod1_Wint) #okay fit
+anova(BioMod1_Wint,type=3)
+test(emtrends(BioMod1_Wint, pairwise~CoverCrop|CoverCropBiomass,
+                       var = "CoverCropBiomass"))$emtrends
+
+
+BioMod2_Wint <- glmmTMB(inter.mpd ~ Site*CoverCropBiomass*CoverCrop+(1|SiteYear/Block),
+                 family = tweedie(),
+                 data = AlphaAnalysisWint_CC)
+simulateResiduals(BioMod2_Wint,plot = TRUE) #worst fit than lmer
+car::Anova(BioMod2_Wint,type = 3) #Test terms doesn't fit
+
+#BioMod3_Wint <- update(BioMod2_Wint,               #No fit
+#                       family = gaussian(link = "log"),
+#                       start = 0)
+
+
+# Summer----
+BioMod1_Sum <- lmer(inter.mpd ~ Site*CoverCropBiomass*CoverCrop+(1|SiteYear/Block),
+             data=AlphaAnalysisSum_CC)
+plot(BioMod1_Sum) #okay fit
+anova(BioMod1_Sum,type=3) #No effect
+test(emtrends(BioMod1_Sum, pairwise~CoverCrop|CoverCropBiomass,
+                       var = "CoverCropBiomass"))$emtrends #No effect
+
+BioMod2_Sum <- glmmTMB(inter.mpd ~ Site*CoverCropBiomass*CoverCrop+(1|SiteYear/Block),
+                 family = tweedie(),
+                 data = AlphaAnalysisSum_CC)
+simulateResiduals(BioMod2_Sum,plot = TRUE) #worst fit than lmer
+car::Anova(BioMod2_Sum,type = 3) #Test terms doesn't fit
+
+#BioMod3_Sum <- update(BioMod2_Sum,               #No fit
+#                       family = gaussian(link = "log"),
+#                       start = 0)
+
+# Viz----
+##  Winter
+### Results don't change with unit corrected model
+AlphaAnalysisWint_CCTmp <- AlphaAnalysisWint_CC %>% 
+  mutate(CoverCropBiomass = CoverCropBiomass*2) #converted to g/m2
+
+BioMod1_Wintb <- lmer(inter.mpd ~ Site*CoverCropBiomass*CoverCrop+(1|SiteYear/Block),
+             data=AlphaAnalysisWint_CCTmp)
+plot(BioMod1_Wintb) #okay fit
+anova(BioMod1_Wintb,type=3)
+test(emtrends(BioMod1_Wintb, pairwise~CoverCrop|CoverCropBiomass,
+                       var = "CoverCropBiomass"))$emtrends
+
+WintCovCrop.labs <- c("Canola","Cereal rye (CR)",
+                      "Hairy vetch (HV)","CR x HV")
+names(WintCovCrop.labs) <- c("Canola", "Cereal rye",
+                             "Hairy vetch","HVxCR")
+
+f_labelsWint <- data.frame(CoverCrop = c("Canola", "Cereal rye",
+                               "Hairy vetch", "HVxCR"),
+                       label = c("italic('P') == 0.40","italic('P') == 0.50",
+                                 "italic('P') < 0.01", "italic('P') < 0.05"))
+
+WintRegMPDFig<-
+  emmip(BioMod1_Wintb,CoverCrop~CoverCropBiomass,
+      at=list(CoverCropBiomass =c(0,300,500,850,1000,1200,1400,1500)),
+      type = "response",plotit = FALSE) %>%
+    mutate(CoverCrop = tvar) %>% 
+    filter(!(CoverCrop == "Canola" & CoverCropBiomass > 1400 |
+             CoverCrop == "Cereal rye" & CoverCropBiomass < 500 |
+             CoverCrop == "Hairy vetch" & CoverCropBiomass > 850 |
+             CoverCrop == "HVxCR" & CoverCropBiomass < 300 |
+             CoverCrop == "HVxCR" & CoverCropBiomass > 1200)) %>% 
+  ggplot(. , aes(CoverCropBiomass,yvar,color=CoverCrop))+
+    geom_line(linewidth = 1.5)+
+    geom_point(data = AlphaAnalysisWint_CCTmp,
+               aes(CoverCropBiomass, inter.mpd,
+                   color=CoverCrop), size = 2.25, alpha = .75)+
+    geom_text(x=-Inf,y=Inf,aes(label = label),
+              color = "black",size = 4.75, data = f_labelsWint,parse = TRUE,
+              hjust = -0.25, vjust = 1.5)+
+    scale_x_continuous(labels = scales::comma)+
+    scale_y_continuous(expand = expansion(mult = 0.14))+
+    scale_color_manual(values = myCol[1:4])+
+    theme_bw(base_size = 16)+
+    theme(legend.position = "none",
+          axis.text.x = element_text(angle = 45,hjust = 1))+
+    labs(x = NULL,
+         y = "Interspecific MPD", color = "Cover crop")+
+    facet_grid(Experiment~CoverCrop,scales = "free_x",
+               labeller = labeller(CoverCrop= WintCovCrop.labs))
+
+WintRegMPDFig
+
+## Summer
+AlphaAnalysisSum_CCTmp <- AlphaAnalysisSum_CC %>% 
+  mutate(CoverCropBiomass = CoverCropBiomass*2)
+
+BioMod1_Sumb <- lmer(inter.mpd ~ Site*CoverCropBiomass*CoverCrop+(1|SiteYear/Block),
+             data=AlphaAnalysisSum_CCTmp)
+plot(BioMod1_Sumb) #results don't change
+anova(BioMod1_Sumb,type=3) #results don't change
+test(emtrends(BioMod1_Sumb, pairwise~CoverCrop|CoverCropBiomass,
+                       var = "CoverCropBiomass"))$emtrends
+
+SumCovCrop.labs <- c("Buckwheat","Sorghum sudangrass (SS)",
+                      "Sunn hemp (SH)","SS x SH")
+names(SumCovCrop.labs) <- c("Buckwheat","S. sudangrass",
+                            "Sunn hemp","SSxSH")
+SumCovCrop.labs <- factor(SumCovCrop.labs,
+                          levels = c("Buckwheat","Sorghum sudangrass (SS)",
+                                     "Sunn hemp (SH)","SS x SH"))
+f_labelsSum <- data.frame(CoverCrop = c("Buckwheat", "S. sudangrass",
+                               "Sunn hemp", "SSxSH"),
+                       label = c("italic('P') == 0.50","italic('P') == 0.97",
+                                 "italic('P') == 0.24", "italic('P') == 0.86"))
+
+SumRegMPDFig<-
+  emmip(BioMod1_Sumb,CoverCrop~CoverCropBiomass,
+        at=list(CoverCropBiomass =c(0,50,100,200,400,500,900)),
+        type = "response",plotit = FALSE) %>%
+    mutate(CoverCrop = tvar) %>% 
+    filter(!(CoverCrop == "Buckwheat" & CoverCropBiomass < 50 |
+             CoverCrop == "Buckwheat" & CoverCropBiomass > 500 |
+             CoverCrop == "Sunn hemp" & CoverCropBiomass < 100 |
+             CoverCrop == "Sunn hemp" & CoverCropBiomass > 500 |
+             CoverCrop == "S. sudangrass" & CoverCropBiomass < 100 |
+             CoverCrop == "SSxSH" & CoverCropBiomass < 200)) %>% 
+    ggplot(. , aes(CoverCropBiomass,yvar,color=CoverCrop))+
+      geom_line(linewidth = 1.5)+
+      geom_point(data = AlphaAnalysisSum_CCTmp,
+                 aes(CoverCropBiomass, inter.mpd,
+                     color=CoverCrop), size = 2.25, alpha = .75)+
+      geom_text(x=-Inf,y=Inf,aes(label = label),
+                color = "black",size = 4.75, data = f_labelsSum,parse = TRUE,
+                hjust = -0.25, vjust = 1.5)+
+      scale_y_continuous(expand = expansion(mult = 0.23))+
+      scale_x_continuous(labels = scales::comma)+
+      scale_color_manual(values = myCol[5:8])+
+      theme_bw(base_size = 16)+
+      theme(legend.position = "none",
+            axis.text.x = element_text(angle = 45,hjust = 1))+
+      labs(x = expression("Cover crop biomass (g"~m^-2*')'),
+           y = "Interspecific MPD", color = "Cover crop")+
+      facet_grid(Experiment~
+                   factor(CoverCrop,
+                          levels = c("Buckwheat","S. sudangrass",
+                                     "Sunn hemp","SSxSH"),
+                          labels = c("Buckwheat","Sorghum sudangrass (SS)",
+                                     "Sunn hemp (SH)","SS x SH")),
+                 scales = "free_x",
+                 labeller = labeller(CoverCrop= SumCovCrop.labs))
+SumRegMPDFig
+
+#pdf("Figures (450dpi)/RegFig.pdf",width = 10.6, height = 7)
+ggpubr::ggarrange(WintRegMPDFig,SumRegMPDFig,nrow = 2,align = "hv")
+#dev.off()
+
+
+ # Checks----
+## Confirmation that estimates are - looks good
+emmip(BioMod1_Wint,CoverCrop~CoverCropBiomass,
+      at=list(CoverCropBiomass =c(0,300,500,850,1000,1200,1400,1500)),
+      type = "response")+
+  facet_wrap(~CoverCrop)
+
+AlphaAnalysisWint_CCTmp2 <- 
+  AlphaAnalysisWint_CC %>% 
+  filter(CoverCrop == "Hairy vetch")
+AlphaAnalysisWint_CCTmp2 <- droplevels(AlphaAnalysisWint_CCTmp2)
+
+BioMod1_WintTmp2 <- lmer(inter.mpd ~ Site*CoverCropBiomass+(1|SiteYear),
+             data=AlphaAnalysisWint_CCTmp2)
+emmip(BioMod1_WintTmp2,~CoverCropBiomass,
+      at=list(CoverCropBiomass =c(0,300,500,850,1000,1200,1400,1500)),
+      type = "response")
+```
+
+Data: CC_DirrectionDataWint and CC_DirrectionDataSum
+```{r dirrection}
+#Will use lmer models
+
+# Winter----
+DirMod1_Wint <- lmer(inter.mpd ~ Site*CoverCrop*CC.Pres +
+                       (1|SiteYear/Block),
+             data=CC_DirrectionDataWint)
+plot(DirMod1_Wint) #okay fit
+anova(DirMod1_Wint)
+
+DirMod2_Wint <- glmmTMB(inter.mpd ~ Site*CoverCrop*CC.Pres +
+                          (1|SiteYear/Block),
+                 family = tweedie(),
+                 data = CC_DirrectionDataWint)
+simulateResiduals(DirMod2_Wint,plot = TRUE) #worst fit than lmer
+car::Anova(DirMod2_Wint,type = 3) #seems off
+
+DirMod3_Wint <- update(DirMod2_Wint,               
+                      family = gaussian(link = "log"),
+                       start = list(beta = rep(0,16)))
+simulateResiduals(DirMod3_Wint,plot = TRUE) #worst fit than lmer
+car::Anova(DirMod3_Wint,type = 3)
+
+# Summer----
+DirMod1_Sum <- lmer(inter.mpd ~ Site*CoverCrop+CC.Pres +
+                       (1|SiteYear/Block),
+             data=CC_DirrectionDataSum)
+plot(DirMod1_Sum) #okay fit
+anova(DirMod1_Sum)
+
+DirMod2_Sum <- glmmTMB(inter.mpd ~ Site*CoverCrop*CC.Pres +
+                          (1|SiteYear/Block),
+                 family = tweedie(),
+                 data = CC_DirrectionDataSum)
+simulateResiduals(DirMod2_Sum,plot = TRUE) #worst fit than lmer
+car::Anova(DirMod2_Sum,type = 3) #seems off
+
+DirMod3_Sum <- update(DirMod2_Sum,               
+                      family = gaussian(link = "log"),
+                      start = list(beta = rep(0,16)))
+simulateResiduals(DirMod3_Sum,plot = TRUE) #worst fit than lmer
+car::Anova(DirMod3_Sum,type = 3)
+
+# Viz----
+##  Winter
+pairs(emmeans(DirMod1_Wint,~CC.Pres|CoverCrop))
+cld(emmeans(DirMod1_Wint,~CC.Pres|CoverCrop),
+    Letters="abcde",adjust="none", reversed= TRUE)
+
+DirrectionFigWint<-
+  emmip(DirMod1_Wint,CoverCrop~CC.Pres, CIs = TRUE,
+      dotarg = list(size=4),
+      linearg = list(linewidth = 1.25,alpha = 0.75,linetype = "solid"),
+      CIarg = list(lwd = 2, alpha = 0.55))+
+  aes(shape = CoverCrop)+
+  labs(y = "Interspecific MPD",
+       x = NULL,
+       color = "Cover crop", shape = "Cover crop")+
+  scale_color_viridis(discrete=TRUE,direction = -1,
+                      option = "A",begin = .15,end = .85)+
+  theme_bw(base_size = 16)+
+  facet_grid(~"Winter cover crops")
+
+##  Summer
+pairs(emmeans(DirMod1_Sum,~CC.Pres|CoverCrop))
+cld(emmeans(DirMod1_Sum,~CC.Pres|CoverCrop),
+    Letters="abcde",adjust="none", reversed= TRUE)
+
+DirrectionFigSum <- 
+emmip(DirMod1_Sum,CoverCrop~CC.Pres, CIs = TRUE,
+      dotarg = list(size=4),
+      linearg = list(linewidth = 1.25,alpha = 0.75,linetype = "solid"),
+      CIarg = list(lwd = 2, alpha = 0.55))+
+  aes(shape = CoverCrop)+
+  labs(y = "Interspecific MPD",
+       x = "Calculated with cover crop?",
+       color = "Cover crop", shape = "Cover crop")+
+  scale_color_viridis(discrete=TRUE,direction = -1,
+                      option = "A",begin = .15,end = .85)+
+  theme_bw(base_size = 16)+
+  facet_grid(~"Summer cover crops")
+
+#pdf("Figures (450dpi)/DirrectionOLDFig.pdf",width = 6.66, height = 6.64)
+ggpubr::ggarrange(DirrectionFigWint,DirrectionFigSum,align = "hv",nrow = 2)
+#dev.off()
+```
+
+I need to prove that cover crop spp. were not causing dispersion by virtue of their species being different than the resident weed community, rather competitive exclusion of photogenically related weeds.
+
+FullSpClean is in latin names and has cleaned the missing plot (n = 159). It includes also includes cover crops as a speices in the matrix.
+```{r Proof}
+# Prep----
+##  Data frame of tilled control for inter.MPD calculation
+TilledData <-
+  WeedSpClean %>% 
+    rownames_to_column() %>% 
+    filter(str_detect(rowname,"_Tilled")) %>% 
+    column_to_rownames(var = "rowname")
+
+##  Data frame of tilled control for merging with cover crop biomass
+TilledDataWide <-
+  WeedSpClean %>% 
+    rownames_to_column() %>% 
+    filter(str_detect(rowname,"_Tilled")) %>% 
+    separate(rowname,
+             into = c("Experiment","Trial","Site",
+                      "Year","Block","Plot","CoverCrop"),
+             sep = "_")
+
+##  Data frame of weeds of the tilled control with the biomass of the cover crops in their corresponding site/year/block 
+CC_BiomassData <-
+  FullSpClean %>% 
+  select("Brassica_napus","Crotalaria_juncea","Fagopyrum_esculentum",
+         "Secale_cereale","Sorghum_X_drummondii","Vicia_villosa") %>% 
+  rownames_to_column() %>% 
+  separate(rowname,
+             into = c("Experiment","Trial","Site",
+                      "Year","Block","Plot","CoverCrop"),
+             sep = "_")
+
+TilledDataPlusTmp <- left_join(TilledDataWide,CC_BiomassData,
+          by = c("Experiment","Trial","Site",
+                 "Year","Block")) #n = 155 because of missing tilled plot 
+
+##  Git rid of duplicate cover crop and weed spp. 
+##  Kept cover crop treatment ID, remember the weeds are those of the tilled treatments!
+TilledDataPlus<-TilledDataPlusTmp %>% 
+  mutate(Brassica_napus = Brassica_napus.x + Brassica_napus.y,
+         Fagopyrum_esculentum = Fagopyrum_esculentum.x + Fagopyrum_esculentum.y,
+         Secale_cereale = Secale_cereale.x + Secale_cereale.y) %>% 
+  rename(Plot_Tilled = Plot.x,
+         CoverCrop = CoverCrop.y) %>% 
+  select(-c(Brassica_napus.x,Brassica_napus.y,
+            Fagopyrum_esculentum.x,Fagopyrum_esculentum.y,
+            Secale_cereale.x,Secale_cereale.y,
+            CoverCrop.x,Plot.y)) %>% 
+  mutate(TreatmentID = paste(Experiment,Trial,Site,
+                      Year,Block,Plot_Tilled,CoverCrop,sep = "_"),
+         .keep = "unused") %>% 
+  column_to_rownames(var = "TreatmentID")
+
+# inter.MPD calculation----
+##  Weed tree used for TilledData
+WeedDist <- cophenetic(tree_boundDicot) #no change from above
+Weed.inter.mpd_Tilled <- modifiedMPD(TilledData, WeedDist,
+                         abundance.weighted="interspecific")
+Weed.inter.mpd_Tilled <- replace_na(Weed.inter.mpd_Tilled,0)
+Weed.AlphaAnalysis_TilledTmp <- data.frame(Trt = rownames(TilledData),
+                               Weed.inter.mpd_Tilled)
+
+Weed.AlphaAnalysis_Tilled <- Weed.AlphaAnalysis_TilledTmp %>% 
+  separate(col = Trt,
+           into = c("Experiment","Trial","Site","Year", "Block","Plot","CoverCrop"),
+           sep="_") %>% 
+  mutate(SiteYear = paste(Site,Trial,sep = "_"),
+         CoverCrop = NULL,
+         across(.cols = c(Experiment,Trial,Site,Block,Year,SiteYear),
+                .fns = factor))
+
+##  Full tree used for TilledDataPlus
+FullDist <- cophenetic(Full.tree_boundDicot) #no change from above
+Full.inter.mpd_Tilled <- modifiedMPD(TilledDataPlus, FullDist,
+                              abundance.weighted="interspecific")
+Full.inter.mpd_Tilled <- replace_na(Full.inter.mpd_Tilled,0)
+Full.AlphaAnalysis_TilledTmp <- data.frame(Trt = rownames(TilledDataPlus),
+                                           Full.inter.mpd_Tilled)
+
+Full.AlphaAnalysis_Tilled <- Full.AlphaAnalysis_TilledTmp %>% 
+  separate(col = Trt,
+           into = c("Experiment","Trial","Site","Year", "Block","Plot","CoverCrop"),
+           sep="_") %>% 
+  mutate(SiteYear = paste(Site,Trial,sep = "_"),
+         across(.cols = c(Experiment,Trial,Site,Block,Year,CoverCrop,SiteYear),
+                .fns = factor))
+
+##  Combination of dataframes
+### n = 155, very good
+ProofDataTmp<-
+  left_join(Full.AlphaAnalysis_Tilled,Weed.AlphaAnalysis_Tilled, 
+          by = c("Experiment","Trial","Site","Year","Block","Plot","SiteYear"))
+
+ProofData <-
+  ProofDataTmp %>% 
+    pivot_longer(cols = c(Weed.inter.mpd_Tilled,Full.inter.mpd_Tilled),
+                 names_to = "CC.Pres", values_to = "inter.mpd") %>% 
+    mutate(CC.Pres = recode(CC.Pres, Weed.inter.mpd_Tilled = "No",
+                            Full.inter.mpd_Tilled = "Yes"),
+           across(.cols = c(CC.Pres),.fns = factor)) %>% 
+    filter(CoverCrop != "Tilled")
+
+ProofData_Wint <- ProofData %>% filter(Experiment == "Winter cover crops")
+ProofData_Wint <- droplevels(ProofData_Wint)
+
+ProofData_Sum <- ProofData %>% filter(Experiment == "Summer cover crops")
+ProofData_Sum <- droplevels(ProofData_Sum)
+ProofData_Sum$CoverCrop <- factor(ProofData_Sum$CoverCrop,
+                                  levels = c("Buckwheat","S. sudangrass","Sunn hemp","SSxSH"))
+
+# Modeling----
+##  Winter----
+ProofModWint_lmer <- lmer(inter.mpd ~ Site*CoverCrop*CC.Pres + 
+                        (1|SiteYear/Block),
+                      data=ProofData_Wint)
+plot(ProofModWint_lmer) #okay fit
+anova(ProofModWint_lmer)
+
+ProofModWint_log <- glmmTMB(inter.mpd ~ Site*CoverCrop*CC.Pres + 
+                          (1|SiteYear/Block),
+                        family = gaussian(link = "log"),
+                        data=ProofData_Wint)
+simulateResiduals(ProofModWint_log,plot = TRUE) #worst
+
+ProofModWint_Twe <- update(ProofModWint_log,family = tweedie(link = "log"))
+simulateResiduals(ProofModWint_Twe,plot = TRUE) #worst
+
+#ProofModWint_Gamma <- update(ProofModWint_log,family = Gamma())
+#simulateResiduals(ProofModWint_Gamma,plot = TRUE) #worst
+
+##  Summer----
+ProofModSum_lmer <- lmer(inter.mpd ~ Site*CoverCrop*CC.Pres + 
+                        (1|SiteYear/Block),
+                      data=ProofData_Sum)
+plot(ProofModSum_lmer) #okay fit
+anova(ProofModSum_lmer)
+
+ProofModSum_log <- glmmTMB(inter.mpd ~ Site*CoverCrop*CC.Pres + 
+                          (1|SiteYear/Block),
+                        family = gaussian(link = "log"),
+                        data=ProofData_Sum)
+simulateResiduals(ProofModSum_log,plot = TRUE) #worst
+
+ProofModSum_Twe <- update(ProofModSum_log,family = tweedie(link = "log"))
+simulateResiduals(ProofModSum_Twe,plot = TRUE) #worst
+
+#ProofModSum_Gamma <- update(ProofModSum_log,family = Gamma())
+#simulateResiduals(ProofModSum_Gamma,plot = TRUE) #worst
+
+# Viz----
+##  Winter----
+pairs(emmeans(ProofModWint_lmer,~CC.Pres|CoverCrop))
+cld(emmeans(ProofModWint_lmer,~CC.Pres|CoverCrop),
+    Letters="abcde",adjust="none", reversed= TRUE)
+
+ProofFigWint<-
+  emmip(ProofModWint_lmer,CoverCrop~CC.Pres, CIs = TRUE,
+      dotarg = list(size=4),
+      linearg = list(size = 1.25,alpha = 0.75,linetype = "solid"),
+      CIarg = list(lwd = 2, alpha = 0.55))+
+  aes(shape = CoverCrop)+
+  labs(y = "Interspecific MPD\nof control weed community",
+       x = NULL,
+       color = "Cover crop", shape = "Cover crop")+
+  scale_color_viridis(discrete=TRUE,direction = -1,
+                      option = "A",begin = .15,end = .85)+
+  theme_bw(base_size = 16)+
+  facet_grid(~"Winter cover crops")
+
+##  Summer----
+pairs(emmeans(ProofModSum_lmer,~CC.Pres|CoverCrop))
+cld(emmeans(ProofModSum_lmer,~CC.Pres|CoverCrop),
+    Letters="abcde",adjust="none", reversed= TRUE)
+
+ProofFigSum<-
+  emmip(ProofModSum_lmer,CoverCrop~CC.Pres, CIs = TRUE,
+      dotarg = list(size=4),
+      linearg = list(size = 1.25,alpha = 0.75,linetype = "solid"),
+      CIarg = list(lwd = 2, alpha = 0.55))+
+  aes(shape = CoverCrop)+
+  labs(y = "Interspecific MPD\nof control weed community",
+       x = "Calculated with cover crop?",
+       color = "Cover crop", shape = "Cover crop")+
+  scale_color_viridis(discrete=TRUE,direction = -1,
+                      option = "A",begin = .15,end = .85)+
+  theme_bw(base_size = 16)+
+  facet_grid(~"Sumer cover crops")
+  #theme(strip.text.x = element_blank())
+
+ggpubr::ggarrange(ProofFigWint, ProofFigSum,align = "hv",nrow = 2)
+```
+
+But are cover crops further away from their weed communties than those of the tilled control?
+```{r Redemption}
+# Prep----
+##  Winter----
+### Distance of cover crop to their weed communities
+DirrectionData.Cov_Wint <-
+  CC_DirrectionDataWint  %>% 
+    pivot_wider(names_from = CC.Pres,
+                values_from = inter.mpd) %>% 
+    mutate(inter.mpdDiff_CovDiff = Yes - No) %>% 
+    rename("Yes_Cov" = "Yes", "No_Cov" = "No")
+
+### Distance of cover crop to the weed communities of the tilled control
+DirrectionData.Tilled_Wint <-
+  ProofData_Wint %>% 
+    pivot_wider(names_from = CC.Pres,
+                values_from = inter.mpd) %>% 
+    mutate(inter.mpdDiff_TilledDiff = Yes - No) %>% 
+    rename("Yes_Till" = "Yes", "No_Till" = "No") 
+DirrectionData.Tilled_Wint$Plot<-as.numeric(DirrectionData.Tilled_Wint$Plot)
+
+sort(names(DirrectionData.Cov_Wint))
+sort(names(DirrectionData.Tilled_Wint))
+
+### Removed block that was missing the tilled control with left_join
+DiffData_WintTmp<-left_join(DirrectionData.Tilled_Wint,DirrectionData.Cov_Wint,
+                           by = c("Experiment", "Trial", "Site",
+                                  "Year", "Block", "CoverCrop", "SiteYear"))
+
+DiffData_Wint <- DiffData_WintTmp %>% 
+  select("Experiment", "Trial", "Site",
+         "Year", "Block", "CoverCrop", "SiteYear",
+         "inter.mpdDiff_TilledDiff","inter.mpdDiff_CovDiff") %>%
+  mutate(inter.mpdDiff = inter.mpdDiff_CovDiff - inter.mpdDiff_TilledDiff)
+
+##  Summer----
+### Distance of cover crop to their weed communities
+DirrectionData.Cov_Sum <-
+  CC_DirrectionDataSum  %>% 
+    pivot_wider(names_from = CC.Pres,
+                values_from = inter.mpd) %>% 
+    mutate(inter.mpdDiff_CovDiff = Yes - No) %>% 
+    rename("Yes_Cov" = "Yes", "No_Cov" = "No")
+
+### Distance of cover crop to the weed communities of the tilled control
+DirrectionData.Tilled_Sum <-
+  ProofData_Sum %>% 
+    pivot_wider(names_from = CC.Pres,
+                values_from = inter.mpd) %>% 
+    mutate(inter.mpdDiff_TilledDiff = Yes - No) %>% 
+    rename("Yes_Till" = "Yes", "No_Till" = "No") 
+DirrectionData.Tilled_Sum$Plot<-as.numeric(DirrectionData.Tilled_Sum$Plot)
+
+sort(names(DirrectionData.Cov_Sum))
+sort(names(DirrectionData.Tilled_Sum))
+
+### Removed block that was missing the tilled control with left_join
+DiffData_SumTmp<-left_join(DirrectionData.Tilled_Sum,DirrectionData.Cov_Sum,
+                           by = c("Experiment", "Trial", "Site",
+                                  "Year", "Block", "CoverCrop", "SiteYear"))
+
+DiffData_Sum <- DiffData_SumTmp %>% 
+  select("Experiment", "Trial", "Site",
+         "Year", "Block", "CoverCrop", "SiteYear",
+         "inter.mpdDiff_TilledDiff","inter.mpdDiff_CovDiff") %>%
+  mutate(inter.mpdDiff = inter.mpdDiff_CovDiff - inter.mpdDiff_TilledDiff)
+
+# Modeling----
+DiffModWint_lmer <- lmer(inter.mpdDiff ~ Site*CoverCrop + 
+                        (1|SiteYear/Block),
+                      data=DiffData_Wint)
+plot(DiffModWint_lmer) #okay fit
+anova(DiffModWint_lmer)
+test(emmeans(DiffModWint_lmer, "CoverCrop")) #The non-sig values will change a little but trends are always the same
+
+#convergence issues
+#glmmTMB(inter.mpdDiff ~ Site*CoverCrop + (1|SiteYear/Block),
+      #family = gaussian(link = "log"), data=DiffData_Wint, start = -200)
+
+DiffModSum_lmer <- lmer(inter.mpdDiff ~ Site*CoverCrop + 
+                        (1|SiteYear/Block),
+                      data=DiffData_Sum)
+summary(DiffModSum_lmer)
+plot(DiffModSum_lmer) #okay fit
+anova(DiffModSum_lmer)
+test(emmeans(DiffModSum_lmer, "CoverCrop"))
+
+#convergence issues
+#glmmTMB(inter.mpdDiff ~ Site*CoverCrop + (1|SiteYear/Block),
+#      family = gaussian(link = "log"), data=DiffData_Sum, start = -300)
+
+# Viz----
+DiffFigWint <-
+  plot(emmeans(DiffModWint_lmer, "CoverCrop"),
+     horizontal = FALSE,plotit = FALSE) %>% 
+  ggplot(data=.,aes(CoverCrop,the.emmean,color=CoverCrop))+
+    geom_hline(yintercept=0, linetype="dashed", 
+                color = "black", size=1.5)+
+    geom_errorbar(aes(ymin = lower.CL, ymax = upper.CL),
+                  color="black",linewidth = 1.5,width = .65)+
+    #geom_linerange(aes(ymin = lower.CL, ymax = upper.CL),
+    #               linewidth = 4,alpha = .45)+
+    geom_point(color = "darkred", size = 4.75)+ #orginally size = 3, color = "black"
+    geom_text(aes(label = c("italic('P') == 0.29","italic('P') < 0.05",
+                            "italic('P') == 0.07","italic('P') < 0.01"),
+                  y = upper.CL+20),
+              color = "black",size = 5,parse = TRUE)+
+    scale_color_manual(values = myCol[1:4])+
+    scale_x_discrete(labels = c("Canola","Cereal rye\n(CR)",
+                              "Hairy vetch\n(HV)","CR x HV"))+
+    scale_y_continuous(expand = expansion(mult = 0.1))+
+    labs(y="Relativized\nInterspecific MPD",
+         x = "Cover crop")+
+    theme_bw(base_size = 16)+
+    theme(legend.position = "none")+
+    facet_grid(~"Winter cover crops")
+
+DiffFigSum <-
+  plot(emmeans(DiffModSum_lmer, "CoverCrop"),
+     horizontal = FALSE,plotit = FALSE) %>% 
+  ggplot(data=.,aes(CoverCrop,the.emmean,color=CoverCrop))+
+    geom_hline(yintercept=0, linetype="dashed",
+               color = "black", size=1.5)+
+    geom_errorbar(aes(ymin = lower.CL, ymax = upper.CL),
+                  color="black",linewidth = 1.5, width = .65)+
+    #geom_linerange(aes(ymin = lower.CL, ymax = upper.CL),
+    #               linewidth = 4,alpha = .45)+
+    geom_point(color = "darkred", size = 4.75)+ #orginally size = 3, color = "black"
+    geom_text(aes(label = c("italic('P') == 0.10","italic('P') == 0.88",
+                            "italic('P') == 0.38","italic('P') == 0.29"),
+                  y = upper.CL+20),
+              color = "black",size = 5,parse = TRUE)+
+    scale_color_manual(values = myCol[5:8])+
+    scale_x_discrete(labels = c("Buckwheat","Sorghum\nsudangrass\n(SS)",
+                                "Sunn hemp\n(SH)", "SS x SH"))+
+    scale_y_continuous(expand = expansion(mult = 0.1))+
+    labs(y="Relativized\nInterspecific MPD",
+         x = "Cover crop")+
+    theme_bw(base_size = 16)+
+    theme(legend.position = "none")+
+    facet_grid(~"Summer cover crops")
+
+#pdf("Figures (450dpi)/Dirrection/DirrectionNEWFig_talk.pdf",width = 5.60, height = 6.60)
+ggpubr::ggarrange(DiffFigWint,NULL,DiffFigSum,
+                  nrow = 3,align = "hv",heights = c(1,-.15,1))
+#dev.off()
+```
+
+
+###   Suppression
+```{r comparison}
+# Tweedie(link = log) was used
+
+# Data frame creation----
+SupressionData <- WeedData[,1:8]
+SupressionData$SiteYear = as.factor(paste(WeedData$Site,WeedData$Trial,sep = "_"))
+SupressionData$WeedBiomass <- rowSums(WeedData[,-c(1:8)])
+SupressionData<-SupressionData[-c(which(SupressionData$Experiment == "Winter cover crops" &
+                                        SupressionData$Trial == "COOP2" &
+                                        SupressionData$Site == "Farm Hub" &
+                                        SupressionData$Plot == "14")),]
+
+SupressionDataWint<-SupressionData %>%
+  filter(Experiment == "Winter cover crops")
+SupressionDataWint <- droplevels(SupressionDataWint)
+
+SupressionDataSum<-SupressionData %>%
+  filter(Experiment == "Summer cover crops")
+SupressionDataSum <- droplevels(SupressionDataSum)
+SupressionDataSum$CoverCrop <- factor(SupressionDataSum$CoverCrop,
+                                      levels = c("Tilled","Buckwheat","S. sudangrass",
+                                                 "Sunn hemp", "SSxSH"))
+
+# Winter----
+SupMod1Wint <- lmer(WeedBiomass ~ Site*CoverCrop + (1|SiteYear/Block),
+                  data = SupressionDataWint)
+plot(SupMod1Wint)
+anova(SupMod1Wint)
+
+SupMod2Wint <- glmmTMB(WeedBiomass ~ Site*CoverCrop + (1|SiteYear/Block),
+                       family = tweedie(),data = SupressionDataWint) #Convergence issues
+simulateResiduals(SupMod2Wint,plot = TRUE) #Perfect
+car::Anova(SupMod2Wint, type = 3)
+#write.xlsx(car::Anova(SupMod2Wint, type = 3),rowNames = TRUE,"~/downloads/SupMod2Wint.xlsx")
+
+SupMod3Wint <- update(SupMod2Wint,family = gaussian(link = "log"), start = list(beta = rep(0,10)))
+simulateResiduals(SupMod3Wint,plot = TRUE) #bad fit
+
+## Summer----
+SupMod1Sum <- lmer(WeedBiomass ~ Site*CoverCrop + (1|SiteYear/Block),
+                  data = SupressionDataSum)
+plot(SupMod1Sum)
+anova(SupMod1Sum)
+
+SupMod2Sum <- glmmTMB(WeedBiomass ~ Site*CoverCrop + (1|SiteYear/Block),
+                       family = tweedie(),data = SupressionDataSum)
+simulateResiduals(SupMod2Sum,plot = TRUE)
+car::Anova(SupMod2Sum, type = 3)
+#write.xlsx(car::Anova(SupMod2Sum, type = 3),rowNames = TRUE,"~/downloads/SupMod2Sum.xlsx")
+
+SupMod3Sum <- update(SupMod2Sum,family = gaussian(link = "log"))
+simulateResiduals(SupMod3Sum,plot = TRUE) #not better
+car::Anova(SupMod2Sum, type = 3) #seems off
+
+## Viz----
+### Winter 1100 x 400
+SupLettersWint<-cld(emmeans(SupMod2Wint,~CoverCrop|Site),
+                     sort=T,Letters="abcde",adjust="none", reversed= TRUE)
+WinterSuppressionFig<-
+  left_join(SupressionDataWint,SupLettersWint) %>% 
+    ggplot(.,aes(CoverCrop,WeedBiomass*20,fill=CoverCrop))+
+      geom_blank(aes(y=mean(WeedBiomass*20)*6.5))+
+      stat_summary(geom = "bar",fun = "mean")+
+      stat_summary(geom = "errorbar",fun.data = "mean_se",width = .1)+
+      stat_summary(geom="text",fun = "MeanPlusSe",
+                   aes(label=trimws(.group)),size=7,vjust = -0.5)+
+      scale_fill_viridis(discrete = TRUE,option = "A",begin = .25,end = .9,
+                         alpha=.975,direction = -1,
+                         labels = c("Tilled","Canola","Cereal rye (CR)",
+                                    "Hairy vetch (HV)","HV x CR"))+
+      scale_x_discrete(labels = c("Tilled","Canola","Cereal\nrye\n(CR)",
+                                "Hairy\nvetch\n(HV)","CR x HV"))+
+      scale_y_continuous(labels = scales::comma)+
+      theme_bw(base_size = 16)+
+      theme(legend.position = "none")+
+      guides(size = "none")+
+      labs(x = NULL,
+           y = expression("Weed biomass (kg"~ha^-1*')'),
+          fill ="Treatment")+
+      facet_grid(Experiment~Site)
+
+### Summer 1250 x 400
+SupLettersSum<-cld(emmeans(SupMod2Sum,~CoverCrop|Site),
+                     sort=T,Letters="abcde",adjust="none", reversed= TRUE)
+SummerSuppressionFig<-
+  left_join(SupressionDataSum,SupLettersSum) %>% 
+    ggplot(.,aes(CoverCrop,WeedBiomass*20,fill=CoverCrop))+
+      geom_blank(aes(y=mean(WeedBiomass*20)*5.75))+
+      stat_summary(geom = "bar",fun = "mean")+
+      stat_summary(geom = "errorbar",fun.data = "mean_se",width = .1)+
+      stat_summary(geom="text",fun = "MeanPlusSe",
+                   aes(label=trimws(.group)),size=7,vjust = -0.5)+
+      scale_fill_viridis(discrete=TRUE,direction = -1,
+                         option = "A",begin = .25,end = .9)+
+      scale_x_discrete(labels=c("Tilled","Buckwheat", "Sorghum\nsudangrass\n(SS)",
+                                "Sunn\nhemp\n(SH)","SS x SH"))+
+      scale_y_continuous(labels = scales::comma)+
+      theme_bw(base_size = 16)+
+      theme(legend.position = "none")+
+      guides(size = "none")+
+      labs(x = "Treatment",
+           y = expression("Weed biomass (kg"~ha^-1*')'),
+           fill ="Treatment")+
+      facet_grid(Experiment~Site)+
+      theme(strip.text.x = element_blank())
+
+#pdf("Figures (450dpi)/WeedSuppression/SuppressionFig.pdf",width = 11, height = 10)
+ggpubr::ggarrange(WinterSuppressionFig,NULL,SummerSuppressionFig,
+                  nrow = 3,align = "hv",
+                  heights = c(1,-0.05,1))
+#dev.off()
+
+### Table
+SuppressionTabelDataTmp <- rbind(
+  left_join(SupressionDataWint,SupLettersWint),
+  left_join(SupressionDataSum,SupLettersSum))
+
+SuppressionTabelData <- 
+  SuppressionTabelDataTmp %>% 
+    mutate(WeedBiomass = WeedBiomass*20) %>% 
+    group_by(Experiment,Site,CoverCrop) %>% 
+    summarise(meanWeed = scales::comma(round(mean(WeedBiomass,na.rm = TRUE),0)),
+              seWeed = round(plotrix::std.error(WeedBiomass,na.rm = TRUE),0),
+              letter = trimws(nth(.group,1)))
+#write.xlsx(SuppressionTabelData,"Figures (450dpi)/SuppressionTable.xlsx")
+
+SuppressionTabelDataTmp %>% 
+    mutate(WeedBiomass = WeedBiomass*20) %>% 
+    group_by(Experiment,CoverCrop) %>% 
+    summarise(meanWeed = scales::comma(round(mean(WeedBiomass,na.rm = TRUE),0)),
+              sdWeed = round(sd(WeedBiomass,na.rm = TRUE),0))
+
+
+### Reduction
+SupressionData %>% 
+  group_by(Experiment,Site,CoverCrop) %>% 
+  summarise(meanWeed = mean(WeedBiomass,na.rm = TRUE)) %>% 
+  mutate(Control=nth(meanWeed,1)) %>% 
+  select(Experiment,CoverCrop,Control,meanWeed) %>% 
+  mutate(PercentRed = (Control-meanWeed)/Control,
+         PercentRed2 = round(PercentRed,2))
+
+SupressionData %>% 
+  group_by(Year,Experiment,Site,Block,CoverCrop) %>% 
+  summarise(meanWeed = mean(WeedBiomass,na.rm = TRUE)) %>% 
+  mutate(Control=nth(meanWeed,1)) %>% 
+  select(Experiment,CoverCrop,Control,meanWeed) %>% 
+  mutate(PercentRed = (Control-meanWeed)/Control) %>% 
+  filter(CoverCrop != "Tilled") %>% 
+  ungroup() %>% 
+  summarise(meanPer = mean(PercentRed))
+```
+
+biomass reg.- didn't use
+```{r regerssion}
+# Data frame creation----
+SupressionDataWint_CC <- SupressionDataWint
+SupressionDataWint_CC <- SupressionDataWint_CC %>% 
+  mutate(CoverCropBiomass=CoverCropBiomass*2, #Conversion to g/m2
+         WeedBiomass = WeedBiomass*2) #Conversion to g/m2
+
+SupressionDataSum_CC <- SupressionDataSum
+SupressionDataSum_CC <- SupressionDataSum_CC %>% 
+  mutate(CoverCropBiomass=CoverCropBiomass*2, #Conversion to g/m2
+         WeedBiomass = WeedBiomass*2) #Conversion to g/m2
+
+# Wint----
+SupBiomassMod1_Wint<-lmer(WeedBiomass ~ Site*CoverCropBiomass + (1|SiteYear/Block),
+                          data = SupressionDataWint_CC)
+plot(SupBiomassMod1_Wint)
+anova(SupBiomassMod1_Wint)
+
+#This warning occurs when the optimizer visits a region of parameter space that is invalid. It is not a problem as long as the optimizer has left that region of parameter space upon convergence, which is indicated by an absence of the model convergence warnings described above.
+SupBiomassMod2_Wint <- glmmTMB(WeedBiomass ~ Site*CoverCropBiomass+(1|SiteYear/Block),
+                               family = tweedie(), data = SupressionDataWint_CC)
+plot(simulateResiduals(SupBiomassMod2_Wint), quantreg = FALSE)
+car::Anova(SupBiomassMod2_Wint,type = 3)
+test(emtrends(SupBiomassMod2_Wint, "Site",var = "CoverCropBiomass"))
+
+SupBiomassMod3_Wint <- update(SupBiomassMod2_Wint,
+                              family = gaussian(link = "log"), start = list(beta=rep(0,4)))
+#simulateResiduals(SupBiomassMod3_Wint, plot = TRUE) #Convergence issue and bad fit
+
+# Sum----
+SupBiomassMod1_Sum<-lmer(WeedBiomass ~ Site*CoverCropBiomass + (1|SiteYear/Block),
+                          data = SupressionDataSum_CC)
+plot(SupBiomassMod1_Sum)
+anova(SupBiomassMod1_Sum)
+
+SupBiomassMod2_Sum <- glmmTMB(WeedBiomass ~ Site*CoverCropBiomass + (1|SiteYear/Block),
+                               family = tweedie(), data = SupressionDataSum_CC)
+simulateResiduals(SupBiomassMod2_Sum, plot = TRUE)
+car::Anova(SupBiomassMod2_Sum,type = 3)
+test(emtrends(SupBiomassMod2_Sum, "Site",var = "CoverCropBiomass"))
+
+#SupBiomassMod3_Sum <- update(SupBiomassMod2_Sum, family = gaussian(link = "log"), start = 0)
+#simulateResiduals(SupBiomassMod3_Sum, plot = TRUE) #really bad
+
+
+# Viz----
+##  Winter
+SupressionDataWint_Mean <- SupressionDataWint %>% 
+  group_by(Site,CoverCrop) %>% 
+  summarise(CoverCropBiomass_Mean = mean(CoverCropBiomass*2,na.rm = TRUE),
+            seCoverCropBiomass = plotrix::std.error(CoverCropBiomass*2),
+            WeedBiomass_Mean = mean(WeedBiomass*2,na.rm = TRUE),
+            seWeedBiomass = plotrix::std.error(WeedBiomass*2))
+
+WintRegLet<-left_join(SupLettersWint,SupressionDataWint_Mean) #from comp. model
+
+WintRegFig <-
+  emmip(SupBiomassMod2_Wint,~CoverCropBiomass|Site,
+        at=list(CoverCropBiomass = seq(from = 1, to = 1300, by = 10)),
+        linearg = list(size = 1,color="darkgrey"),
+        type = "response") +
+    geom_errorbar(data=SupressionDataWint_Mean, orientation = "y",
+                  aes(x = CoverCropBiomass_Mean, y = WeedBiomass_Mean,
+                      xmin=CoverCropBiomass_Mean - seCoverCropBiomass,
+                      xmax=CoverCropBiomass_Mean + seCoverCropBiomass,
+                      color=CoverCrop,height = 0),show.legend=FALSE)+
+    geom_errorbar(data=SupressionDataWint_Mean, orientation = "x",
+                  aes(x = CoverCropBiomass_Mean, y = WeedBiomass_Mean,
+                      ymin=WeedBiomass_Mean-seWeedBiomass,
+                      ymax=WeedBiomass_Mean+seWeedBiomass,
+                      color=CoverCrop,width = 0),show.legend=FALSE)+
+    geom_point(data = SupressionDataWint_Mean,
+               aes(x = CoverCropBiomass_Mean, y = WeedBiomass_Mean,
+                   fill = CoverCrop, color = CoverCrop, shape = CoverCrop),
+               size = 5.75, group = "CoverCrop")+
+    ggrepel::geom_text_repel(data = WintRegLet,
+              aes(CoverCropBiomass_Mean,WeedBiomass_Mean,label = trimws(.group)),
+              vjust = -.45, hjust = -0.45,force=.3,point.padding=1,
+              segment.color = NA,size = 8.15)+  
+    scale_fill_manual(values = c("black",myCol[1:4]),
+                      labels = c("Tilled control","Canola","Cereal rye (CR)",
+                                 "Hairy vetch (HV)","CR x HV"))+
+    scale_color_manual(values = c("black",myCol[1:4]),
+                       labels = c("Tilled control","Canola","Cereal rye (CR)",
+                                 "Hairy vetch (HV)","CR x HV"))+
+    scale_shape_manual(values = c(1,22,21,25,23),
+                       labels = c("Tilled control","Canola","Cereal rye (CR)",
+                                 "Hairy vetch (HV)","CR x HV"))+
+    scale_y_continuous(expand = expansion(mult = c(0.07, 0.015)))+
+    scale_x_continuous(labels = scales::comma)+
+    labs(y=expression("Weed biomass (g"~m^-2*')'),
+         x=expression("Cover crop biomass (g"~m^-2*')'),
+         color = "Treatment",fill = "Treatment",
+         shape = "Treatment")+
+    theme_bw(base_size = 20)+
+    #ggh4x::facet_grid2("Winter cover crops" ~ Site, scales = "free_y", independent = "y")+
+    theme(axis.title.x = element_blank(),
+          legend.spacing.y = unit(.15, 'cm'))+
+    guides(fill = guide_legend(byrow = TRUE))
+
+##  Summer
+SupressionDataSum_Mean <- SupressionDataSum %>% 
+  group_by(Site,CoverCrop) %>% 
+  summarise(CoverCropBiomass_Mean = mean(CoverCropBiomass*2,na.rm = TRUE),
+            seCoverCropBiomass = plotrix::std.error(CoverCropBiomass*2),
+            WeedBiomass_Mean = mean(WeedBiomass*2,na.rm = TRUE),
+            seWeedBiomass = plotrix::std.error(WeedBiomass*2))
+
+SumRegLet<-left_join(SupLettersSum,SupressionDataSum_Mean) #from comp. model
+
+SummerRegFig <-
+  emmip(SupBiomassMod2_Sum,~CoverCropBiomass|Site,
+        at=list(CoverCropBiomass = 1:600),
+        linearg = list(size = 1,color = "darkgrey"),
+        type = "response") +
+    geom_errorbar(data=SupressionDataSum_Mean, orientation = "y",
+                  aes(x = CoverCropBiomass_Mean, y = WeedBiomass_Mean,
+                      xmin=CoverCropBiomass_Mean - seCoverCropBiomass,
+                      xmax=CoverCropBiomass_Mean + seCoverCropBiomass,
+                      color=CoverCrop,height = 0),show.legend=FALSE)+
+    geom_errorbar(data=SupressionDataSum_Mean, orientation = "x",
+                  aes(x = CoverCropBiomass_Mean, y = WeedBiomass_Mean,
+                      ymin=WeedBiomass_Mean-seWeedBiomass,
+                      ymax=WeedBiomass_Mean+seWeedBiomass,
+                      color=CoverCrop,width = 0),show.legend=FALSE)+
+    geom_point(data = SupressionDataSum_Mean,
+               aes(x = CoverCropBiomass_Mean, y = WeedBiomass_Mean,
+                   fill = CoverCrop, color = CoverCrop, shape = CoverCrop),
+               size = 5.75, group = "CoverCrop")+
+    ggrepel::geom_text_repel(data = SumRegLet,
+              aes(CoverCropBiomass_Mean,WeedBiomass_Mean,label = trimws(.group)),
+              vjust = -.45, hjust = -0.45,force=.5,
+              segment.color = NA,size = 8.15)+
+    scale_fill_manual(values = c("black",myCol[5:8]),
+                      labels = c("Tilled control","Buckwheat","S. sudangrass (SS)",
+                                 "Sunn hemp (SH)", "SS x SH"))+
+    scale_color_manual(values = c("black",myCol[5:8]),
+                       labels = c("Tilled control","Buckwheat","S. sudangrass (SS)",
+                                 "Sunn hemp (SH)", "SS x SH"))+
+    scale_shape_manual(values = c(1,22,21,25,23),
+                       labels = c("Tilled control","Buckwheat","S. sudangrass (SS)",
+                                 "Sunn hemp (SH)", "SS x SH"))+
+    scale_y_continuous(expand = expansion(mult = c(0.055, 0.015)))+
+    labs(y=expression("Weed biomass (g"~m^-2*')'),
+         x=expression("Cover crop biomass (g"~m^-2*')'),
+         color = "Treatment",fill = "Treatment",
+         shape = "Treatment")+
+    theme_bw(base_size = 20)+
+    #ggh4x::facet_grid2("Summer cover crops" ~ Site, scales = "free_y", independent = "y")+ #seems to to work anymore?
+    theme(strip.text.x = element_blank(),
+          legend.spacing.y = unit(.15, 'cm'))+
+   guides(fill = guide_legend(byrow = TRUE))
+
+
+#pdf("Figures (450dpi)/WeedSuppression/RegressionFig.pdf",width = 10.5, height = 7.5)
+ggpubr::ggarrange(WintRegFig,NULL,SummerRegFig,
+                  nrow = 3,align = "hv",
+                  heights = c(1,-0.13,1))
+#dev.off()
+
+
+
+# Collinearity check----
+##  Moderate correlation confirms my use of two models
+## emmeans is totally off in the models that have CoverCrop*CoverCropBiomass
+SupBiomassMod2_WintTmp <- lm(WeedBiomass~ Site*CoverCrop+CoverCropBiomass, data = SupressionDataWint_CC)
+
+plot(emmeans(SupBiomassMod2_WintTmp,~CoverCrop*Site, type = "response"))
+summary(SupBiomassMod2_WintTmp)
+check_collinearity(SupBiomassMod2_WintTmp)
+
+SupBiomassMod2_SumTmp <- glmmTMB(WeedBiomass~ Site+CoverCrop+CoverCropBiomass+(1|SiteYear/Block),
+                               family = tweedie(), data = SupressionDataSum_CC)
+check_collinearity(SupBiomassMod2_SumTmp)
+```
+
+#   Life cycle
+```{r}
+library(FD)
+# Cleaning COOP data to just show weeds in the Tilled control
+WeedSpCleanTilled <- WeedSpClean[which(rownames(WeedSpClean) %like% "Tilled"),]
+WeedSpCleanTilled <- WeedSpCleanTilled[,which(colSums(WeedSpCleanTilled)>0)]
+
+# Loading and cleaning weed communities for the tilled control
+
+# Dummy variable----
+TraitsWeed_Dummy <- read.xlsx("../Data/TraitsCOOPWeeds.xlsx",sheet = 1)
+TraitsWeed_Dummy <- TraitsWeed_Dummy %>% column_to_rownames("Species")
+
+TraitsWeed_Dummy <- as.matrix(TraitsWeed_Dummy)
+WeedSpCleanTilled <- as.matrix(WeedSpCleanTilled)
+TraitsWeed_Dummy<-TraitsWeed_Dummy[order(match(rownames(TraitsWeed_Dummy),
+                                   colnames(WeedSpCleanTilled))),]
+
+CWM_DummyRaw <- functcomp(TraitsWeed_Dummy,WeedSpCleanTilled,CWM.type = "all") #Confirmed that this properly deals with species that have Wint/Sum emergence
+CWM_DummyFull <- CWM_DummyRaw %>% 
+  select(ends_with("_1")) %>% 
+  rename_with(~gsub("_1", "", .x, fixed = TRUE)) %>% 
+  rownames_to_column() %>% 
+  separate(rowname,
+           into = c("Experiment","Trial","Site",
+                    "Year","Block","Plot","CoverCrop"),
+           sep = "_") %>% 
+  mutate(across(.cols = c(Experiment,Trial,Site,Year,Block,CoverCrop),
+                .fns = factor))
+
+CWM_DummyEmergence <- CWM_DummyFull %>% 
+  select(-c(Annual, Biennial, Perennial)) %>%
+  pivot_longer(cols = c(Winter,Summer),
+               names_to = "Emergence",
+               values_to = "Percent_Emergence")
+
+CWM_DummyLifeCycle <- CWM_DummyFull %>% 
+  select(-c(Winter,Summer)) %>%
+  pivot_longer(cols = c(Annual, Biennial, Perennial),
+               names_to = "LifeCycle",
+               values_to = "Percent_LifeCycle")
+
+#Summaries
+CWM_DummyFull %>% 
+  group_by(Experiment,Site) %>% 
+  summarise(across(.cols = c(Summer,Winter,Annual,Biennial,Perennial),
+                   ~scales::percent(mean(.x,na.rm=TRUE))))
+
+ggplot(CWM_DummyEmergence,aes(Site,Percent_Emergence,
+                              fill=Emergence))+
+  stat_summary(geom = "bar",fun = "mean",position = "dodge")+
+  stat_summary(geom = "errorbar",fun.data = "mean_se",width=.1,
+               position = position_dodge(.9))+
+  facet_grid(~Experiment)
+
+ggplot(CWM_DummyLifeCycle,aes(Site,Percent_LifeCycle,
+                              fill=LifeCycle))+
+  stat_summary(geom = "bar",fun = "mean",position = "dodge")+
+  stat_summary(geom = "errorbar",fun.data = "mean_se",width=.1,
+               position = position_dodge(.9))+
+  facet_grid(~Experiment)
+```
+
+#   Permanova
+```{r prep}
+cols <- c("grey",myCol[5:8])
+cols2 <- c("grey",myCol[1:4])
+
+# Winter
+#Row sums of zero removed-non imputed for NMDS and PerManova b/c multiple plots naturally at 0
+WeedSpClean_Wint.PerM<-WeedSpClean_Wint[rowSums(WeedSpClean_Wint) != 0, ]
+WeedEnvClean_Wint.PerM <- data.frame(Trt = rownames(WeedSpClean_Wint.PerM))
+WeedEnvClean_Wint.PerM <- WeedEnvClean_Wint.PerM %>% 
+  separate(col = Trt,
+           into = c("Experiment","Trial","Site","Year", "Block","Plot","CoverCrop"),
+           sep="_")
+
+WeedEnvClean_Wint.PerM$Site <- as.factor(WeedEnvClean_Wint.PerM$Site)
+WeedEnvClean_Wint.PerM$CoverCrop <- factor(WeedEnvClean_Wint.PerM$CoverCrop,
+                                           levels = c("Tilled","Canola","Cereal rye",
+                                                      "Hairy vetch","HVxCR"),
+                                           labels = c("Till","Can","CR","HV","CRxHV"))
+
+WeedSpClean_Wint.PerM.FH <- WeedSpClean_Wint.PerM %>% 
+  rownames_to_column(var = "RowNames") %>%
+  filter(grepl("Farm Hub", RowNames)) %>% 
+  column_to_rownames(var = "RowNames")
+WeedSpClean_Wint.PerM.FH<-WeedSpClean_Wint.PerM.FH[,colSums(WeedSpClean_Wint.PerM.FH) != 0]
+WeedEnvClean_Wint.PerM.FH <- WeedEnvClean_Wint.PerM %>% 
+  filter(grepl("Farm Hub", Site))
+
+WeedSpClean_Wint.PerM.Mus <- WeedSpClean_Wint.PerM %>% 
+  rownames_to_column(var = "RowNames") %>%
+  filter(grepl("Mus", RowNames)) %>% 
+  column_to_rownames(var = "RowNames")
+WeedSpClean_Wint.PerM.Mus<-WeedSpClean_Wint.PerM.Mus[,colSums(WeedSpClean_Wint.PerM.Mus) != 0]
+WeedEnvClean_Wint.PerM.Mus <- WeedEnvClean_Wint.PerM %>% 
+  filter(grepl("Mus", Site))
+
+# Summer
+#Row sums of zero removed - for NMDS and PerManova
+WeedSpClean_Sum.PerM<-WeedSpClean_Sum[rowSums(WeedSpClean_Sum) != 0, ]
+WeedEnvClean_Sum.PerM <- data.frame(Trt = rownames(WeedSpClean_Sum.PerM))
+WeedEnvClean_Sum.PerM <- WeedEnvClean_Sum.PerM %>% 
+  separate(col = Trt,
+           into = c("Experiment","Trial","Site","Year", "Block","Plot","CoverCrop"),
+           sep="_")
+WeedEnvClean_Sum.PerM$Site <- as.factor(WeedEnvClean_Sum.PerM$Site)
+WeedEnvClean_Sum.PerM$CoverCrop <- factor(WeedEnvClean_Sum.PerM$CoverCrop,
+                                          levels = c("Tilled","Buckwheat","S. sudangrass",
+                                                     "Sunn hemp","SSxSH"),
+                                          labels = c("Till","BW","SS","SH","SSxSH"))
+
+WeedSpClean_Sum.PerM.FH <- WeedSpClean_Sum.PerM %>% 
+  rownames_to_column(var = "RowNames") %>%
+  filter(grepl("Farm Hub", RowNames)) %>% 
+  column_to_rownames(var = "RowNames")
+WeedSpClean_Sum.PerM.FH<-WeedSpClean_Sum.PerM.FH[,colSums(WeedSpClean_Sum.PerM.FH) != 0]
+WeedEnvClean_Sum.PerM.FH <- WeedEnvClean_Sum.PerM %>% 
+  filter(grepl("Farm Hub", Site))
+
+WeedSpClean_Sum.PerM.Mus <- WeedSpClean_Sum.PerM %>% 
+  rownames_to_column(var = "RowNames") %>%
+  filter(grepl("Mus", RowNames)) %>% 
+  column_to_rownames(var = "RowNames")
+WeedSpClean_Sum.PerM.Mus<-WeedSpClean_Sum.PerM.Mus[,colSums(WeedSpClean_Sum.PerM.Mus) != 0]
+WeedEnvClean_Sum.PerM.Mus <- WeedEnvClean_Sum.PerM %>% 
+  filter(grepl("Mus", Site))
+```
+
+```{r ploting}
+#Ploting
+#pdf("Figures (450dpi)/nmds.pdf",width = 6.15, height = 6.64)
+m <- matrix(c(1,2,3,4,5,5),nrow = 3,ncol = 2,byrow = TRUE)
+layout(mat = m,heights = c(0.4,0.4,0.2))
+par(oma = c(8,1,1,1), mfrow = c(2, 2), mar = c(4, 4, 4, 4))
+
+#FH -winter
+nmds_Wint.FH<-metaMDS(WeedSpClean_Wint.PerM.FH)
+ordiplot(nmds_Wint.FH, type = "n")
+points(nmds_Wint.FH, cex = 1, pch = c(1,22,21,25,23)[WeedEnvClean_Wint.PerM.FH$CoverCrop],
+       bg = cols2[WeedEnvClean_Wint.PerM.FH$CoverCrop],
+       col = cols2[WeedEnvClean_Wint.PerM.FH$CoverCrop])
+ordiellipse(nmds_Wint.FH, groups = WeedEnvClean_Wint.PerM.FH$CoverCrop, draw = "polygon",
+         label = TRUE, kind = "sd")
+ordispider(nmds_Wint.FH, groups = WeedEnvClean_Wint.PerM.FH$CoverCrop, draw = "polygon",
+         lty = "dotted",col = cols2[WeedEnvClean_Wint.PerM.FH$CoverCrop],
+         label = TRUE, kind = "sd")
+title(main = "Winter experiment: Farm hub")
+
+#Mus -Winter
+nmds_Wint.Mus<-metaMDS(WeedSpClean_Wint.PerM.Mus)
+ordiplot(nmds_Wint.Mus, type = "n")
+points(nmds_Wint.Mus, cex = 1, pch = c(1,22,21,25,23)[WeedEnvClean_Wint.PerM.Mus$CoverCrop],
+       bg = cols2[WeedEnvClean_Wint.PerM.Mus$CoverCrop],
+       col = cols2[WeedEnvClean_Wint.PerM.Mus$CoverCrop])
+ordiellipse(nmds_Wint.Mus, groups = WeedEnvClean_Wint.PerM.Mus$CoverCrop, draw = "polygon",
+         label = TRUE, kind = "sd")
+ordispider(nmds_Wint.Mus, groups = WeedEnvClean_Wint.PerM.Mus$CoverCrop, draw = "polygon",
+         lty = "dotted",col = cols2[WeedEnvClean_Wint.PerM.Mus$CoverCrop],
+         label = TRUE, kind = "sd")
+title(main = "Winter experiment: Musgrave")
+
+#FH Summer
+nmds_Sum.FH<-metaMDS(WeedSpClean_Sum.PerM.FH)
+ordiplot(nmds_Sum.FH, type = "n")
+points(nmds_Sum.FH, cex = 1, pch = c(1,22,21,25,23)[WeedEnvClean_Sum.PerM.FH$CoverCrop],
+       bg = cols[WeedEnvClean_Sum.PerM.FH$CoverCrop],
+       col = cols[WeedEnvClean_Sum.PerM.FH$CoverCrop])
+ordiellipse(nmds_Sum.FH, groups = WeedEnvClean_Sum.PerM.FH$CoverCrop, draw = "polygon",
+         label = TRUE, kind = "sd")
+ordispider(nmds_Sum.FH, groups = WeedEnvClean_Sum.PerM.FH$CoverCrop, draw = "polygon",
+         lty = "dotted",col = cols[WeedEnvClean_Sum.PerM.FH$CoverCrop],
+         label = TRUE, kind = "sd")
+title(main = "Summer experiment: Farm hub")
+
+#Mus Summer
+nmds_Sum.Mus<-metaMDS(WeedSpClean_Sum.PerM.Mus[-3,], distance = "bray") #Results vary with distance metric chosen
+ordiplot(nmds_Sum.Mus, type = "n")
+points(nmds_Sum.Mus, cex = 1, pch = c(1,22,21,25,23)[WeedEnvClean_Sum.PerM.Mus[-3,]$CoverCrop],
+       bg = cols[WeedEnvClean_Sum.PerM.Mus[-3,]$CoverCrop],
+       col = cols[WeedEnvClean_Sum.PerM.Mus[-3,]$CoverCrop])
+ordiellipse(nmds_Sum.Mus, groups = WeedEnvClean_Sum.PerM.Mus[-3,]$CoverCrop, draw = "polygon",
+         label = TRUE, kind = "sd")
+ordispider(nmds_Sum.Mus, groups = WeedEnvClean_Sum.PerM.Mus[-3,]$CoverCrop, draw = "polygon",
+         lty = "dotted",col = cols[WeedEnvClean_Sum.PerM.Mus[-3,]$CoverCrop],
+         label = TRUE, kind = "sd")
+title(main = "Summer experiment: Musgrave")
+
+par(fig = c(0, 1, 0, 1), oma = c(2, 0, 4, 0), mar = c(0, 0, 0, 0), new = TRUE)
+plot(0, 0, type = 'l', bty = 'n', xaxt = 'n', yaxt = 'n')
+legend(x = "bottom",inset = 0,
+        legend = c("Tilled control",
+                   "Canola","Cereal rye","Hairy vetch","CR x HV",
+                   "Tilled control",
+                   "Buckwheat","S. sudangrass","Sunn hemp","SSxSH"),
+       pch = c(1,22,21,25,23,1,22,21,25,23),
+       pt.bg = c("black",myCol[1:4],"black",myCol[5:8]),
+       col=c("black",myCol[1:4],"black",myCol[5:8]), cex= 1, ncol=2,
+       xpd = TRUE)
+#Figure for 615 x 664
+#dev.off()
+```
+
+Anderson and Walsh (2014) Note that if design is balanced, then
+PERMANOVA is okay even in the face of heterogeneous dispersion *as long
+as as the data is balanced*.
+
+Results (3/20/23)
+-   Bray-Curtis is nice because it is semi-metric, focuses on shared species (although a case can be made for          double zeros here)
+-   I used a log transformation to minimize the effect of dominant species on permanova results. To deal with zeros     I added 1.
+
+-   Plots with zero weeds makes it impossible to constrain permutations. But there wasn't much variation within
+    sites so this should be a minimal issue.
+-   To get homogeneous variation, i had to remove an outlier in the summer experiment. NMDS confirmed that it was
+    way off 
+
+A test for homogeneity of multivariate dispersions (PERMDISP) in the space of the chosen dissimilarity
+measure can be done, either to accompany PERMANOVA or in its own right.This test compares within group
+spread among groups using the average value of the distances from individual observations to their
+own group centroid (Anderson 2017). If it is unsignificant, then we have confirmation that centroid differences drive PERMANOVA results. Not sure if it's *valid with different sample sizes*.
+
+In old
+-   Euclidean permanova with constrains gives expected results
+-   RDA, everything is significant
+```{r Testing}
+#Winter prep####
+##Sites
+bd_Sites.Wint<- betadisper(vegdist(WeedSpClean_Wint.PerM, method = "bray"),
+                      WeedEnvClean_Wint.PerM$Site)
+boxplot(bd_Sites.Wint)
+anova(bd_Sites.Wint)
+permutest(bd_Sites.Wint)
+
+##CC
+bd_CC.Wint<- betadisper(vegdist(WeedSpClean_Wint.PerM, method = "bray"),
+                   WeedEnvClean_Wint.PerM$CoverCrop)
+boxplot(bd_CC.Wint)
+anova(bd_CC.Wint)
+permutest(bd_CC.Wint)
+
+##Interaction
+bd_Int.Wint<- betadisper(vegdist(WeedSpClean_Wint.PerM, method = "bray"),
+                         as.factor(WeedEnvClean_Wint.PerM$Site):
+                           as.factor(WeedEnvClean_Wint.PerM$CoverCrop))
+boxplot(bd_Int.Wint)
+anova(bd_Int.Wint)
+permutest(bd_Int.Wint)
+
+
+#Summer prep####
+##Sites
+bd_Sites.Sum<- betadisper(vegdist(WeedSpClean_Sum.PerM[-23,], method = "bray"),
+                      WeedEnvClean_Sum.PerM[-23,]$Site)
+boxplot(bd_Sites.Sum)
+anova(bd_Sites.Sum)
+permutest(bd_Sites.Sum)
+
+##CC - outlier had to be removed for equal spread
+bd_CC.Sum<- betadisper(vegdist(WeedSpClean_Sum.PerM[-23,], method = "bray"),
+                   WeedEnvClean_Sum.PerM[-23,]$CoverCrop)
+boxplot(bd_CC.Sum)
+anova(bd_CC.Sum)
+permutest(bd_CC.Sum)
+
+##Interaction
+bd_Int.Sum<- betadisper(vegdist(WeedSpClean_Sum.PerM[-23,], method = "bray"),
+                         as.factor(WeedEnvClean_Sum.PerM[-23,]$Site):
+                           as.factor(WeedEnvClean_Sum.PerM[-23,]$CoverCrop))
+boxplot(bd_Int.Sum)
+anova(bd_Int.Sum)
+permutest(bd_Int.Sum)
+
+# PerManova tests####
+##  Winter
+adonis2(log(WeedSpClean_Wint.PerM+1) ~ Site*CoverCrop, data = WeedEnvClean_Wint.PerM) #both
+#adonis2(log(WeedSpClean_Wint.PerM.FH+1) ~ CoverCrop, data = WeedEnvClean_Wint.PerM.FH)
+#adonis2(log(WeedSpClean_Wint.PerM.Mus+1) ~ CoverCrop, data = WeedEnvClean_Wint.PerM.Mus)
+
+##  Suummer
+adonis2(log(WeedSpClean_Sum.PerM[-23,]+1) ~ Site*CoverCrop, data = WeedEnvClean_Sum.PerM[-23,]) #both
+#adonis2(log(WeedSpClean_Sum.PerM.Mus[-3,]+1) ~ CoverCrop, data = WeedEnvClean_Sum.PerM.Mus[-3,])
+#adonis2(log(WeedSpClean_Sum.PerM.FH+1) ~ CoverCrop, data = WeedEnvClean_Sum.PerM.FH)
+
+#devtools::install_github("pmartinezarbizu/pairwiseAdonis/pairwiseAdonis")
+library(pairwiseAdonis)
+pairwise.adonis(log(WeedSpClean_Sum.PerM[-23,]+1),WeedEnvClean_Sum.PerM[-23,]$CoverCrop)
+pairwise.adonis(WeedSpClean_Wint.PerM,WeedEnvClean_Wint.PerM$CoverCrop)
+```
+
+
+#   Ploting examples
+```{r heatmaps}
+ht_opt("DENDROGRAM_PADDING" = unit(1,"mm"),
+       "DIMNAME_PADDING" = unit(2,"mm"), 
+       "TITLE_PADDING" = unit(4,"mm"))
+
+# Prep----
+WeedSpCleanSimp<-WeedSpClean %>% 
+  rownames_to_column(var = "TreatmentID") %>% 
+  separate(TreatmentID,
+           into = c("Experiment","Trial","Site",
+                    "Year","Block","Plot","CoverCrop"),
+           sep = "_") %>% 
+  group_by(Experiment,CoverCrop) %>% 
+  summarise(across(-matches(c("Experiment","Trial","Site","Year",
+                              "Block","Plot","CoverCrop")),
+                   ~ mean(.x, na.rm = TRUE))) %>% 
+  ungroup()
+
+WeedSpCleanSimp <- as.data.frame(WeedSpCleanSimp)
+rownames(WeedSpCleanSimp) <- paste(WeedSpCleanSimp$Experiment,WeedSpCleanSimp$CoverCrop,sep = "_")
+WeedSpCleanSimp$Experiment <- NULL
+WeedSpCleanSimp$CoverCrop <- NULL
+
+AlphaAnalysisDist <- AlphaAnalysis %>% 
+  group_by(Experiment,CoverCrop) %>% 
+  summarise(inter.mpd =  mean(inter.mpd,na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  mutate(TreatmentID = paste(Experiment,CoverCrop,sep = "_"),
+         .keep = "unused") %>% 
+  column_to_rownames(var = "TreatmentID")
+
+##  WinterPrep----
+WeedSpCleanSimpWint<- WeedSpCleanSimp %>% 
+  rownames_to_column() %>% 
+  filter(rowname %like% "Winter cover crops") %>% 
+  mutate(rowname = str_replace(rowname,".*_", "")) %>% 
+  column_to_rownames(var = "rowname")
+WeedSpCleanSimpWint<-WeedSpCleanSimpWint[,which(colSums(WeedSpCleanSimpWint)>0)]
+
+AlphaAnalysisDistWint <- AlphaAnalysisDist %>% 
+  rownames_to_column() %>% 
+  filter(rowname %like% "Winter cover crops") %>% 
+  mutate(rowname = str_replace(rowname,".*_", "")) %>% 
+  column_to_rownames(var = "rowname")
+
+#Matching order and modifying row names
+WeedSpCleanSimpWint<-WeedSpCleanSimpWint[order(match(rownames(WeedSpCleanSimpWint),
+                                                     rownames(AlphaAnalysisDistWint))),]
+WeedSpCleanSimpWint<-WeedSpCleanSimpWint[,order(match(colnames(WeedSpCleanSimpWint),
+                                                      tree_boundDicot.Wint$tip.label))]
+tree_boundDicot.Wint$tip.label <- str_replace(tree_boundDicot.Wint$tip.label,"_"," ")
+colnames(WeedSpCleanSimpWint) <- str_replace(colnames(WeedSpCleanSimpWint),"_"," ")
+
+DendroClustWint<-as.dendrogram(hclust(dist(AlphaAnalysisDistWint)))
+plot(DendroClustWint)
+DendroClustWint.reorder <- reorder(DendroClustWint, c(1,2,5,3,4))
+plot(DendroClustWint.reorder)
+
+DendroTreeWint <- as.dendrogram(as.hclust(tree_boundDicot.Wint))
+plot(DendroTreeWint,horiz = TRUE,xlim = c(300,-200),ylim = c(0,50)) 
+
+
+WinterAnno <- 
+  AlphaAnalysis %>% 
+  filter(Experiment == "Winter cover crops") %>%
+  group_by(CoverCrop,Block) %>% 
+  summarise(inter.mpd = mean(inter.mpd,na.rm = TRUE))
+
+WinterAnno<-droplevels(WinterAnno)
+WinterAnno<-reshape2::acast(WinterAnno, Block~CoverCrop,value.var = "inter.mpd")
+
+Wint_InterMPD.letters = anno_simple(trimws(interMPDLettersWint$.group),
+                                    col = circlize::colorRamp2(c(0, 2), c("white", "white")) ,
+                                    pch = trimws(interMPDLettersWint$.group),
+                                    pt_size = unit(.45, "cm"))
+Wint_InterMPD.boxplot = anno_boxplot(WinterAnno, which = "column",
+                                     box_width = 0.85,ylim=c(100,275),border = FALSE,
+                                     height = unit(4, "cm"),
+                                     axis_param = list(gp=gpar(fontsize=10))) 
+Winter_TopAnno1 = HeatmapAnnotation("Statistical group" = Wint_InterMPD.letters,
+                                   show_annotation_name = FALSE)
+Winter_TopAnno2 = HeatmapAnnotation("Interspecific\nMPD" = Wint_InterMPD.boxplot,
+                                   annotation_name_side = "left",
+                                   annotation_name_rot = 0,
+                                   annotation_name_gp = gpar(fontsize=12))
+#Top weeds
+
+##  SummerPrep----
+WeedSpCleanSimpSum<-WeedSpCleanSimp %>% 
+  rownames_to_column() %>% 
+  filter(rowname %like% "Summer cover crops") %>% 
+  mutate(rowname = str_replace(rowname,".*_", "")) %>% 
+  column_to_rownames(var = "rowname")
+WeedSpCleanSimpSum<-WeedSpCleanSimpSum[,which(colSums(WeedSpCleanSimpSum)>0)]
+
+AlphaAnalysisDistSum <- AlphaAnalysisDist %>% 
+  rownames_to_column() %>% 
+  filter(rowname %like% "Summer cover crops") %>% 
+  mutate(rowname = str_replace(rowname,".*_", "")) %>% 
+  column_to_rownames(var = "rowname")
+
+#Matching order and modifying row names
+WeedSpCleanSimpSum<-WeedSpCleanSimpSum[order(match(rownames(WeedSpCleanSimpSum),
+                                                   rownames(AlphaAnalysisDistSum))),]
+WeedSpCleanSimpSum<-WeedSpCleanSimpSum[,order(match(colnames(WeedSpCleanSimpSum),
+                                                      tree_boundDicot.Sum$tip.label))]
+tree_boundDicot.Sum$tip.label <- str_replace(tree_boundDicot.Sum$tip.label,"_"," ")
+colnames(WeedSpCleanSimpSum) <- str_replace(colnames(WeedSpCleanSimpSum),"_"," ")
+
+DendroClustSum<-as.dendrogram(hclust(dist(AlphaAnalysisDistSum)))
+plot(DendroClustSum,ylim = c(-50,100))
+DendroClustSum.reorder <- reorder(DendroClustSum, c(1,5,4,3,2))
+plot(DendroClustSum.reorder,ylim = c(-50,100))
+
+DendroTreeSum <- as.dendrogram(as.hclust(tree_boundDicot.Sum))
+plot(DendroTreeSum,horiz = TRUE,xlim = c(300,-200),ylim = c(0,60)) 
+
+SummerAnno <- 
+  AlphaAnalysis %>% 
+  filter(Experiment == "Summer cover crops") %>%
+  group_by(CoverCrop,Block) %>% 
+  summarise(inter.mpd = mean(inter.mpd,na.rm = TRUE))
+SummerAnno<-droplevels(SummerAnno)
+SummerAnno<-reshape2::acast(SummerAnno, Block~CoverCrop,value.var = "inter.mpd")
+
+Sum_InterMPD.letters = anno_simple(trimws(interMPDLettersSum$.group),
+                                    col = circlize::colorRamp2(c(0, 2), c("white", "white")) ,
+                                    pch = trimws(interMPDLettersSum$.group),
+                                    pt_size = unit(.45, "cm"))
+Sum_InterMPD.boxplot = anno_boxplot(SummerAnno, which = "column",
+                                     box_width = 0.85,ylim=c(50,250),border = FALSE,
+                                     height = unit(4, "cm"),
+                                     axis_param = list(gp=gpar(fontsize=10))) 
+Summer_TopAnno1 = HeatmapAnnotation("Statistical group" = Sum_InterMPD.letters,
+                                   show_annotation_name = FALSE)
+Summer_TopAnno2 = HeatmapAnnotation("Interspecific\nMPD" = Sum_InterMPD.boxplot,
+                                   annotation_name_side = "left",
+                                   annotation_name_rot = 0,
+                                   annotation_name_gp = gpar(fontsize=12))
+
+#Top weeds
+
+##  Viz----
+col_funWint = circlize::colorRamp2(c(0,0.0001, 300), c("white", "#D2EEEF","#a80000")) #BuRd
+col_funSum = circlize::colorRamp2(c(0,0.0001, 400), c("white", "#D2EEEF","#a80000"))
+
+### Winter----
+ht_Wint<-Heatmap(t(WeedSpCleanSimpWint*20),
+        cluster_rows = DendroTreeWint,
+        show_row_dend = TRUE,
+        cluster_columns = DendroClustWint.reorder,
+        show_column_dend = TRUE,
+      #labels
+        row_title = "Weed species phylogeny",
+        row_title_gp = gpar(fontsize = 14.5),
+        show_row_names = TRUE,
+        row_names_gp = gpar(fontsize = 12,fontface = "italic"),
+        column_title = "Treatments clustered\nby Interspecific MPD",
+        column_title_gp = gpar(fontsize = 14.5),
+        show_column_names = TRUE,
+        column_names_side = "top",
+        column_names_rot = 90,
+        column_names_centered = TRUE,
+      #over all aesthetics
+        rect_gp = gpar(col = "white", lwd = 1.5),
+        col = col_funWint,
+        heatmap_legend_param = list(title = "Weed biomass (kg/ha)",
+                                    title_gp = gpar(fontsize = 12.5),
+                                    direction = "horizontal",
+                                    title_position = "lefttop",
+                                    labels_gp = gpar(fontsize = 12)),
+        row_dend_width = unit(2.5, "cm"),
+        column_dend_height = unit(.75, "cm"),
+        top_annotation = c(Winter_TopAnno1,Winter_TopAnno2),
+        column_split = 2,
+        column_gap = unit(3, "mm"))
+draw(ht_Wint,heatmap_legend_side = "bottom")
+
+### Summer----
+ht_Sum<-Heatmap(t(WeedSpCleanSimpSum*20),
+                 cluster_rows = DendroTreeSum,
+                 show_row_dend = TRUE,
+                 cluster_columns = DendroClustSum.reorder,
+                 show_column_dend = TRUE,
+                 #labels
+                 row_title = "Weed species phylogeny",
+                 row_title_gp = gpar(fontsize = 14.5),
+                 show_row_names = TRUE,
+                 row_names_gp = gpar(fontsize = 12,fontface = "italic"),
+                 column_title = "Treatments clustered\nby Interspecific MPD",
+                 column_title_gp = gpar(fontsize = 14.5),
+                 show_column_names = TRUE,
+                 column_names_side = "top",
+                 column_names_rot = 90,
+                 column_names_centered = TRUE,
+                 #over all aesthetics
+                 rect_gp = gpar(col = "white", lwd = 1.5),
+                 col = col_funSum,
+                 heatmap_legend_param = list(title = "Weed biomass (kg/ha)",
+                                             title_gp = gpar(fontsize = 12.5),
+                                             direction = "horizontal",
+                                             title_position = "lefttop",
+                                             labels_gp = gpar(fontsize = 12)),
+                 row_dend_width = unit(2.5, "cm"),
+                 column_dend_height = unit(.75, "cm"),
+                 top_annotation = c(Summer_TopAnno1,Summer_TopAnno2))
+draw(ht_Sum,heatmap_legend_side = "bottom")
+
+ht_WintFinal <- draw(ht_Wint,heatmap_legend_side = "bottom")
+ht_SumFinal <- draw(ht_Sum,heatmap_legend_side = "bottom")
+
+library(multipanelfigure)
+HeatMap <- multi_panel_figure(
+   width = 290, height = 330,
+   columns = 2, rows = 1)
+HeatMap %<>%
+  fill_panel(ht_WintFinal, column = 1) %<>%
+  fill_panel(ht_SumFinal, column = 2)
+
+#pdf("Figures (450dpi)/HeatMap/HeatMap2.pdf",width = 11.42, height = 12.99)
+HeatMap
+#dev.off()
+```
+
+Stuff I've used in presentations
+```{r other}
+### Pylo cleaning viz----
+#tiff("FullTree.tiff", units="in", width=5.5, height=10, res=300)
+plot(Full.tree$scenario.3, cex = 0.65)
+#dev.off()
+
+#tiff("FullTreeBound.tiff", units="in", width=5.5, height=10, res=300)
+plot(Full.tree_bound$scenario.3,cex = 0.6)
+#dev.off()
+
+#tiff("FullTreeBoundUltmetric.tiff", units="in", width=5.5, height=10, res=300)
+plot(Full.tree_boundDicot,cex = 0.6)
+#dev.off()
+
+## Shrestha example----
+plot(phytools::pbtree(n = 10))
+
+ExampleWeeds <- SpeciesList %>% 
+  filter(species %in% c("Cerastium fontanum","Chenopodium album",
+              "Stellaria media","Erigeron annuus","Taraxacum officinale"))
+
+#all weeds  
+Example.tree_Shrestha<-phylo.maker(sp.list = ExampleWeeds,
+                             tree = GBOTB.extended.WP,
+                             nodes = nodes.info.1.WP, scenarios = "S3")
+plot(Example.tree_Shrestha$scenario.3)
+
+#Per vs annual biomass
+ExampleAbu_Shrestha<-
+  data.frame(Treatment = c("A","B","C","D","E"),
+             WeedBiomass = c(10,2,1,8,12,
+                             5,13,14,7,3),
+             GroupEx = c(rep("Perennial",5),rep("Annual",5)))
+
+ggplot(ExampleAbu_Shrestha,aes(Treatment,WeedBiomass,fill=GroupEx))+
+  geom_bar(stat = "identity")+
+  labs(fill = "Life cycle",y = "Percentage of weed biomass")+
+  scale_y_continuous(breaks=c(0,7.5,15),
+        labels=c("0 %", "50 %", "100 %"))+
+  theme_bw(base_size = 16)
+##  Dispersion example----
+
+### Clustered
+ExampleWeeds_Clust <- SpeciesList %>% 
+  filter(species %in% c("Cerastium fontanum","Chenopodium album","Lamium purpureum",
+              "Stellaria media","Erigeron annuus","Taraxacum officinale"))
+Example.tree_Clust<-phylo.maker(sp.list = ExampleWeeds_Clust,
+                             tree = GBOTB.extended.WP,
+                             nodes = nodes.info.1.WP, scenarios = "S3")
+
+Example.tree_Clust$scenario.3$tip.label <- 
+  c(" Weed spp."," Weed spp."," Cover crop",
+    " Weed spp."," Weed spp."," Weed spp.")
+
+#pdf("Figures (450dpi)/ClustTree.pdf", width=5.65, height=6.30)
+plot(Example.tree_Clust$scenario.3, cex=2,edge.width=2.5)
+#dev.off()
+
+### Spread
+ExampleWeeds_Spred <- SpeciesList %>% 
+  filter(species %in% c("Cerastium fontanum","Chenopodium album","Digitaria ischaemum",
+              "Stellaria media","Erigeron annuus","Taraxacum officinale"))
+Example.tree_Spred <- phylo.maker(sp.list = ExampleWeeds_Spred,
+                                  tree = GBOTB.extended.WP,
+                                  nodes = nodes.info.1.WP, scenarios = "S3")
+Example.tree_Spred$scenario.3$tip.label <- 
+  c(" Weed spp."," Weed spp."," Weed spp.",
+    " Weed spp."," Weed spp."," Cover crop")
+
+#pdf("Figures (450dpi)/SpredTree.pdf", width=5.65, height=6.30)
+plot(Example.tree_Spred$scenario.3, cex=2,edge.width=2.5)
+#dev.off()
+
+### Neutral
+ExampleWeeds_Netral <- SpeciesList %>% 
+  filter(species %in% c("Cerastium fontanum","Chenopodium album",
+              "Stellaria media","Erigeron annuus","Taraxacum officinale"))
+Example.tree_Netral <- phylo.maker(sp.list = ExampleWeeds_Netral,
+                                  tree = GBOTB.extended.WP,
+                                  nodes = nodes.info.1.WP, scenarios = "S3")
+Example.tree_Netral$scenario.3$tip.label <- rep(" Weed spp.",5)
+
+
+#pdf("Figures (450dpi)/NetralTree.pdf", width=5.65, height=6.30)
+plot(Example.tree_Netral$scenario.3, cex=2,edge.width=2.5)
+#dev.off()
+```
