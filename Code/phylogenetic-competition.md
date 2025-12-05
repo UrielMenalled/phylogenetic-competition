@@ -1,5 +1,7 @@
-Untitled
+Does phylogenetic relatedness affect crop-weed competition?
 ================
+Uriel D. Menalled
+2022-2023
 
 \##Loading
 
@@ -126,9 +128,8 @@ library(ggtree) #manually install if in lib
     ## 
     ## Please cite:
     ## 
-    ## Guangchuang Yu.  Data Integration, Manipulation and Visualization of
-    ## Phylogenetic Trees (1st edition). Chapman and Hall/CRC. 2022,
-    ## doi:10.1201/9781003279242, ISBN: 9781032233574
+    ## Guangchuang Yu. Using ggtree to visualize data on tree-like structures.
+    ## Current Protocols in Bioinformatics. 2020, 69:e96. doi:10.1002/cpbi.96
 
     ## 
     ## Attaching package: 'ggtree'
@@ -3841,33 +3842,36 @@ nmds_Wint.FH<-metaMDS(WeedSpClean_Wint.PerM.FH)
     ## Square root transformation
     ## Wisconsin double standardization
     ## Run 0 stress 0.1592958 
-    ## Run 1 stress 0.1778739 
-    ## Run 2 stress 0.1868368 
-    ## Run 3 stress 0.1592958 
-    ## ... New best solution
-    ## ... Procrustes: rmse 2.284124e-05  max resid 7.250395e-05 
+    ## Run 1 stress 0.1592958 
+    ## ... Procrustes: rmse 1.288345e-05  max resid 4.238352e-05 
     ## ... Similar to previous best
-    ## Run 4 stress 0.1746006 
-    ## Run 5 stress 0.1835827 
-    ## Run 6 stress 0.1830916 
-    ## Run 7 stress 0.1879677 
-    ## Run 8 stress 0.1810746 
-    ## Run 9 stress 0.1820266 
-    ## Run 10 stress 0.1824829 
-    ## Run 11 stress 0.1589249 
+    ## Run 2 stress 0.1592959 
+    ## ... Procrustes: rmse 4.031302e-05  max resid 0.0001363338 
+    ## ... Similar to previous best
+    ## Run 3 stress 0.188545 
+    ## Run 4 stress 0.1746005 
+    ## Run 5 stress 0.1802783 
+    ## Run 6 stress 0.1752594 
+    ## Run 7 stress 0.1589249 
     ## ... New best solution
-    ## ... Procrustes: rmse 0.01993279  max resid 0.1106036 
-    ## Run 12 stress 0.1678079 
-    ## Run 13 stress 0.1824832 
-    ## Run 14 stress 0.1832482 
-    ## Run 15 stress 0.176128 
-    ## Run 16 stress 0.167336 
-    ## Run 17 stress 0.1906578 
-    ## Run 18 stress 0.1778739 
-    ## Run 19 stress 0.1706457 
-    ## Run 20 stress 0.1817176 
-    ## *** Best solution was not repeated -- monoMDS stopping criteria:
-    ##     20: stress ratio > sratmax
+    ## ... Procrustes: rmse 0.01994155  max resid 0.1106181 
+    ## Run 8 stress 0.1589249 
+    ## ... New best solution
+    ## ... Procrustes: rmse 2.118194e-05  max resid 8.595413e-05 
+    ## ... Similar to previous best
+    ## Run 9 stress 0.189345 
+    ## Run 10 stress 0.1770274 
+    ## Run 11 stress 0.1834612 
+    ## Run 12 stress 0.2008938 
+    ## Run 13 stress 0.1794037 
+    ## Run 14 stress 0.1751467 
+    ## Run 15 stress 0.1710087 
+    ## Run 16 stress 0.1873216 
+    ## Run 17 stress 0.1866504 
+    ## Run 18 stress 0.1669495 
+    ## Run 19 stress 0.1745007 
+    ## Run 20 stress 0.1669495 
+    ## *** Best solution repeated 1 times
 
 ``` r
 ordiplot(nmds_Wint.FH, type = "n")
@@ -4070,40 +4074,32 @@ nmds_Wint.Mus<-metaMDS(WeedSpClean_Wint.PerM.Mus)
 
     ## Wisconsin double standardization
     ## Run 0 stress 0.2442452 
-    ## Run 1 stress 0.2442012 
+    ## Run 1 stress 0.2318452 
     ## ... New best solution
-    ## ... Procrustes: rmse 0.1227252  max resid 0.3206513 
-    ## Run 2 stress 0.2363263 
+    ## ... Procrustes: rmse 0.08203563  max resid 0.376943 
+    ## Run 2 stress 0.2311329 
     ## ... New best solution
-    ## ... Procrustes: rmse 0.1024122  max resid 0.4129705 
-    ## Run 3 stress 0.2411793 
-    ## Run 4 stress 0.2675861 
-    ## Run 5 stress 0.234014 
-    ## ... New best solution
-    ## ... Procrustes: rmse 0.1237047  max resid 0.3058719 
-    ## Run 6 stress 0.2324525 
-    ## ... New best solution
-    ## ... Procrustes: rmse 0.03509274  max resid 0.1223162 
-    ## Run 7 stress 0.2440909 
-    ## Run 8 stress 0.2634745 
-    ## Run 9 stress 0.2340455 
-    ## Run 10 stress 0.2421463 
-    ## Run 11 stress 0.2405523 
-    ## Run 12 stress 0.2299219 
-    ## ... New best solution
-    ## ... Procrustes: rmse 0.08184566  max resid 0.4594799 
-    ## Run 13 stress 0.2586336 
-    ## Run 14 stress 0.2408468 
-    ## Run 15 stress 0.2302377 
-    ## ... Procrustes: rmse 0.02886271  max resid 0.1278647 
-    ## Run 16 stress 0.239693 
-    ## Run 17 stress 0.2311328 
-    ## Run 18 stress 0.2409024 
-    ## Run 19 stress 0.2333654 
-    ## Run 20 stress 0.2333655 
+    ## ... Procrustes: rmse 0.02542522  max resid 0.1184233 
+    ## Run 3 stress 0.2356517 
+    ## Run 4 stress 0.2347656 
+    ## Run 5 stress 0.2338897 
+    ## Run 6 stress 0.2366862 
+    ## Run 7 stress 0.2520669 
+    ## Run 8 stress 0.2334798 
+    ## Run 9 stress 0.2520419 
+    ## Run 10 stress 0.232817 
+    ## Run 11 stress 0.2425151 
+    ## Run 12 stress 0.2361661 
+    ## Run 13 stress 0.2407589 
+    ## Run 14 stress 0.2324525 
+    ## Run 15 stress 0.2413227 
+    ## Run 16 stress 0.2316838 
+    ## Run 17 stress 0.2514723 
+    ## Run 18 stress 0.2508781 
+    ## Run 19 stress 0.2399999 
+    ## Run 20 stress 0.2363263 
     ## *** Best solution was not repeated -- monoMDS stopping criteria:
-    ##     19: stress ratio > sratmax
-    ##      1: scale factor of the gradient < sfgrmin
+    ##     20: stress ratio > sratmax
 
 ``` r
 ordiplot(nmds_Wint.Mus, type = "n")
@@ -4307,36 +4303,36 @@ nmds_Sum.FH<-metaMDS(WeedSpClean_Sum.PerM.FH)
     ## Square root transformation
     ## Wisconsin double standardization
     ## Run 0 stress 0.1502587 
-    ## Run 1 stress 0.1623466 
-    ## Run 2 stress 0.1561949 
-    ## Run 3 stress 0.1386979 
+    ## Run 1 stress 0.1402714 
     ## ... New best solution
-    ## ... Procrustes: rmse 0.04923415  max resid 0.2800473 
-    ## Run 4 stress 0.1493727 
-    ## Run 5 stress 0.1510915 
-    ## Run 6 stress 0.1411913 
-    ## Run 7 stress 0.1399067 
-    ## Run 8 stress 0.1416505 
-    ## Run 9 stress 0.1527625 
-    ## Run 10 stress 0.1546555 
-    ## Run 11 stress 0.141191 
-    ## Run 12 stress 0.1386976 
+    ## ... Procrustes: rmse 0.05491116  max resid 0.2876668 
+    ## Run 2 stress 0.1510842 
+    ## Run 3 stress 0.1519731 
+    ## Run 4 stress 0.1612188 
+    ## Run 5 stress 0.1527628 
+    ## Run 6 stress 0.1617401 
+    ## Run 7 stress 0.1499661 
+    ## Run 8 stress 0.1398531 
     ## ... New best solution
-    ## ... Procrustes: rmse 0.0001763335  max resid 0.0004564791 
-    ## ... Similar to previous best
-    ## Run 13 stress 0.141191 
-    ## Run 14 stress 0.1399066 
-    ## Run 15 stress 0.1696702 
-    ## Run 16 stress 0.1386462 
+    ## ... Procrustes: rmse 0.06367932  max resid 0.3002838 
+    ## Run 9 stress 0.138606 
     ## ... New best solution
-    ## ... Procrustes: rmse 0.00666997  max resid 0.02777312 
-    ## Run 17 stress 0.1386465 
-    ## ... Procrustes: rmse 0.0005572233  max resid 0.001490128 
-    ## ... Similar to previous best
-    ## Run 18 stress 0.1398529 
-    ## Run 19 stress 0.1631787 
-    ## Run 20 stress 0.1416502 
-    ## *** Best solution repeated 1 times
+    ## ... Procrustes: rmse 0.05898895  max resid 0.3149355 
+    ## Run 10 stress 0.1706599 
+    ## Run 11 stress 0.1406734 
+    ## Run 12 stress 0.1520267 
+    ## Run 13 stress 0.1402713 
+    ## Run 14 stress 0.1387193 
+    ## ... Procrustes: rmse 0.006745131  max resid 0.0284214 
+    ## Run 15 stress 0.1402715 
+    ## Run 16 stress 0.1398604 
+    ## Run 17 stress 0.1549936 
+    ## Run 18 stress 0.1612192 
+    ## Run 19 stress 0.1562749 
+    ## Run 20 stress 0.1648026 
+    ## *** Best solution was not repeated -- monoMDS stopping criteria:
+    ##      1: no. of iterations >= maxit
+    ##     19: stress ratio > sratmax
 
 ``` r
 ordiplot(nmds_Sum.FH, type = "n")
@@ -4540,32 +4536,31 @@ nmds_Sum.Mus<-metaMDS(WeedSpClean_Sum.PerM.Mus[-3,], distance = "bray") #Results
     ## Square root transformation
     ## Wisconsin double standardization
     ## Run 0 stress 0.1782472 
-    ## Run 1 stress 0.193622 
-    ## Run 2 stress 0.1864736 
-    ## Run 3 stress 0.2034275 
-    ## Run 4 stress 0.2042382 
-    ## Run 5 stress 0.1861512 
-    ## Run 6 stress 0.1842851 
-    ## Run 7 stress 0.186803 
-    ## Run 8 stress 0.1842852 
-    ## Run 9 stress 0.1938171 
-    ## Run 10 stress 0.2170884 
-    ## Run 11 stress 0.214576 
-    ## Run 12 stress 0.1782472 
+    ## Run 1 stress 0.1842851 
+    ## Run 2 stress 0.2235854 
+    ## Run 3 stress 0.2126947 
+    ## Run 4 stress 0.2209022 
+    ## Run 5 stress 0.2061708 
+    ## Run 6 stress 0.186803 
+    ## Run 7 stress 0.1845209 
+    ## Run 8 stress 0.1842851 
+    ## Run 9 stress 0.1861665 
+    ## Run 10 stress 0.1853583 
+    ## Run 11 stress 0.1782915 
+    ## ... Procrustes: rmse 0.01510977  max resid 0.07681003 
+    ## Run 12 stress 0.22731 
+    ## Run 13 stress 0.1845208 
+    ## Run 14 stress 0.2119599 
+    ## Run 15 stress 0.1892341 
+    ## Run 16 stress 0.1782472 
     ## ... New best solution
-    ## ... Procrustes: rmse 3.368472e-05  max resid 0.0001381875 
+    ## ... Procrustes: rmse 2.105356e-05  max resid 8.740652e-05 
     ## ... Similar to previous best
-    ## Run 13 stress 0.1782472 
-    ## ... Procrustes: rmse 7.963751e-05  max resid 0.0002395034 
-    ## ... Similar to previous best
-    ## Run 14 stress 0.1853583 
-    ## Run 15 stress 0.1827315 
-    ## Run 16 stress 0.2099294 
-    ## Run 17 stress 0.2076218 
-    ## Run 18 stress 0.1873813 
-    ## Run 19 stress 0.2042448 
-    ## Run 20 stress 0.2051345 
-    ## *** Best solution repeated 2 times
+    ## Run 17 stress 0.224335 
+    ## Run 18 stress 0.2335133 
+    ## Run 19 stress 0.1827315 
+    ## Run 20 stress 0.182257 
+    ## *** Best solution repeated 1 times
 
 ``` r
 ordiplot(nmds_Sum.Mus, type = "n")
@@ -4841,7 +4836,7 @@ permutest(bd_Sites.Wint)
     ## 
     ## Response: Distances
     ##           Df   Sum Sq   Mean Sq      F N.Perm Pr(>F)
-    ## Groups     1 0.000339 0.0003395 0.0951    999   0.78
+    ## Groups     1 0.000339 0.0003395 0.0951    999  0.741
     ## Residuals 73 0.260542 0.0035691
 
 ``` r
@@ -4875,7 +4870,7 @@ permutest(bd_CC.Wint)
     ## 
     ## Response: Distances
     ##           Df  Sum Sq   Mean Sq      F N.Perm Pr(>F)
-    ## Groups     4 0.04624 0.0115611 1.8328    999  0.135
+    ## Groups     4 0.04624 0.0115611 1.8328    999  0.124
     ## Residuals 70 0.44155 0.0063078
 
 ``` r
@@ -4945,7 +4940,7 @@ permutest(bd_Sites.Sum)
     ## 
     ## Response: Distances
     ##           Df   Sum Sq   Mean Sq     F N.Perm Pr(>F)
-    ## Groups     1 0.002979 0.0029787 0.823    999  0.369
+    ## Groups     1 0.002979 0.0029787 0.823    999  0.366
     ## Residuals 77 0.278682 0.0036192
 
 ``` r
@@ -4981,7 +4976,7 @@ permutest(bd_CC.Sum)
     ## 
     ## Response: Distances
     ##           Df   Sum Sq   Mean Sq      F N.Perm Pr(>F)  
-    ## Groups     4 0.033854 0.0084634 2.3078    999  0.065 .
+    ## Groups     4 0.033854 0.0084634 2.3078    999  0.068 .
     ## Residuals 74 0.271379 0.0036673                       
     ## ---
     ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
@@ -5018,7 +5013,7 @@ permutest(bd_Int.Sum)
     ## 
     ## Response: Distances
     ##           Df  Sum Sq  Mean Sq      F N.Perm Pr(>F)
-    ## Groups     9 0.11203 0.012448 0.7122    999  0.728
+    ## Groups     9 0.11203 0.012448 0.7122    999  0.694
     ## Residuals 69 1.20598 0.017478
 
 ``` r
@@ -5074,16 +5069,16 @@ pairwise.adonis(log(WeedSpClean_Sum.PerM[-23,]+1),WeedEnvClean_Sum.PerM[-23,]$Co
 ```
 
     ##            pairs Df SumsOfSqs   F.Model         R2 p.value p.adjusted sig
-    ## 1       SS vs SH  1 0.8417324 2.1972756 0.07043165   0.017       0.17    
-    ## 2       SS vs BW  1 0.8514415 1.9366830 0.06260151   0.023       0.23    
-    ## 3    SS vs SSxSH  1 0.2814846 0.6861659 0.02311399   0.766       1.00    
-    ## 4     SS vs Till  1 1.0927622 2.8689040 0.09002205   0.004       0.04   .
+    ## 1       SS vs SH  1 0.8417324 2.1972756 0.07043165   0.027       0.27    
+    ## 2       SS vs BW  1 0.8514415 1.9366830 0.06260151   0.016       0.16    
+    ## 3    SS vs SSxSH  1 0.2814846 0.6861659 0.02311399   0.754       1.00    
+    ## 4     SS vs Till  1 1.0927622 2.8689040 0.09002205   0.003       0.03   .
     ## 5       SH vs BW  1 1.7678071 4.5802321 0.13245232   0.001       0.01   *
-    ## 6    SH vs SSxSH  1 0.4829292 1.3507223 0.04308425   0.188       1.00    
-    ## 7     SH vs Till  1 0.6304371 1.9151611 0.06000788   0.042       0.42    
-    ## 8    BW vs SSxSH  1 1.2509362 3.0347225 0.09186463   0.002       0.02   .
+    ## 6    SH vs SSxSH  1 0.4829292 1.3507223 0.04308425   0.222       1.00    
+    ## 7     SH vs Till  1 0.6304371 1.9151611 0.06000788   0.039       0.39    
+    ## 8    BW vs SSxSH  1 1.2509362 3.0347225 0.09186463   0.001       0.01   *
     ## 9     BW vs Till  1 1.7904415 4.6643570 0.13455772   0.001       0.01   *
-    ## 10 SSxSH vs Till  1 0.9677081 2.7226745 0.08320452   0.003       0.03   .
+    ## 10 SSxSH vs Till  1 0.9677081 2.7226745 0.08320452   0.005       0.05   .
 
 ``` r
 pairwise.adonis(WeedSpClean_Wint.PerM,WeedEnvClean_Wint.PerM$CoverCrop)
@@ -5091,14 +5086,14 @@ pairwise.adonis(WeedSpClean_Wint.PerM,WeedEnvClean_Wint.PerM$CoverCrop)
 
     ##            pairs Df SumsOfSqs  F.Model         R2 p.value p.adjusted sig
     ## 1    Till vs Can  1 1.5837990 4.224948 0.12716192   0.001       0.01   *
-    ## 2     Till vs HV  1 1.1541642 2.852331 0.09245107   0.003       0.03   .
+    ## 2     Till vs HV  1 1.1541642 2.852331 0.09245107   0.002       0.02   .
     ## 3     Till vs CR  1 1.6737200 4.144977 0.12894633   0.001       0.01   *
     ## 4  Till vs CRxHV  1 1.6529580 4.094531 0.13168011   0.001       0.01   *
     ## 5      Can vs HV  1 1.3017195 3.168797 0.09850529   0.001       0.01   *
     ## 6      Can vs CR  1 1.0561340 2.576075 0.08158313   0.002       0.02   .
-    ## 7   Can vs CRxHV  1 0.9037729 2.203752 0.07296287   0.008       0.08    
-    ## 8       HV vs CR  1 1.0320769 2.340297 0.07713494   0.003       0.03   .
-    ## 9    HV vs CRxHV  1 0.8675309 1.961476 0.06772706   0.006       0.06    
+    ## 7   Can vs CRxHV  1 0.9037729 2.203752 0.07296287   0.005       0.05   .
+    ## 8       HV vs CR  1 1.0320769 2.340297 0.07713494   0.001       0.01   *
+    ## 9    HV vs CRxHV  1 0.8675309 1.961476 0.06772706   0.010       0.10    
     ## 10   CR vs CRxHV  1 0.3367256 0.762842 0.02747708   0.765       1.00
 
 # Ploting examples

@@ -1,5 +1,7 @@
 ---
-title: "Untitled"
+title: "Does phylogenetic relatedness affect crop-weed competition?"
+author: Uriel D. Menalled
+date: 2022-2023
 output: github_document
 editor_options: 
   chunk_output_type: console
