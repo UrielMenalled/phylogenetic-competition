@@ -1,4 +1,5 @@
 # phylogenetic-competition
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17835637.svg)](https://doi.org/10.5281/zenodo.17835637)
 
 Does the phylogenetic relatedness of cover crops impact their competition with weeds?
 
