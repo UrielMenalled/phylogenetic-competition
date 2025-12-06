@@ -68,10 +68,12 @@ Phylogenetic analysis:
         10/01/22 5. Make a phylogentic tree ultimetic
 
 ```{r}
-COOP1Data<-read.xlsx("Data/COOP1_weedsHighRes.xlsx")
-COOP2Data<-read.xlsx("Data/COOP2_weedsHighRes.xlsx")
-COOP3Data<-read.xlsx("Data/COOP3_weedsHighRes.xlsx")
-COOP4Data<-read.xlsx("Data/COOP4_weedsHighRes.xlsx")
+library(here)
+
+COOP1Data<-read.xlsx(here("Data","COOP1_weedsHighRes.xlsx"))
+COOP2Data<-read.xlsx(here("Data","COOP2_weedsHighRes.xlsx"))
+COOP3Data<-read.xlsx(here("Data","COOP3_weedsHighRes.xlsx"))
+COOP4Data<-read.xlsx(here("Data","COOP4_weedsHighRes.xlsx"))
 
 COOP1Data$Block<-as.numeric(COOP1Data$Block)
 
@@ -158,9 +160,9 @@ WeedData <- WeedData %>%
 
 # "_weed" removes the cover crop species
 # Data to make phylogentic trees
-NameKey<-read.xlsx("Data/NameKey.xlsx")
+NameKey<-read.xlsx(here("Data","NameKey.xlsx"))
 SpeciesList<-NameKey[!is.na(NameKey$species),2:6] #five unknown spp. removed
-FamilyList<-read.csv("Data/FamilyList.csv")
+FamilyList<-read.csv(here("Data","FamilyList.csv"))
 
 # Six cover crops removed to focus only on weed communities
 NameKey_weed<-NameKey %>% 
@@ -1699,7 +1701,7 @@ WeedSpCleanTilled <- WeedSpCleanTilled[,which(colSums(WeedSpCleanTilled)>0)]
 # Loading and cleaning weed communities for the tilled control
 
 # Dummy variable----
-TraitsWeed_Dummy <- read.xlsx("Data/TraitsCOOPWeeds.xlsx",sheet = 1)
+TraitsWeed_Dummy <- read.xlsx(here("Data","TraitsCOOPWeeds.xlsx"),sheet = 1)
 TraitsWeed_Dummy <- TraitsWeed_Dummy %>% column_to_rownames("Species")
 
 TraitsWeed_Dummy <- as.matrix(TraitsWeed_Dummy)
