@@ -307,4 +307,12 @@ d.  Missing data codes: blank cell
 
 -   Due to peer reviewer feedback, "Rhamphospermum arvense" is referred to as "Sinapis arvensis" in the writing and figures of the article "Phylogenetic relatedness can influence cover crop-based weed suppression"
 
+-   Version control is done using the renv package. This package maintains a package library within the project folder. It is useful because it automatically restores all package versions that I used during my analysis to the within-project package library on your computer. Don’t worry, all changes will only be within the project and will not affect your R packages outside of this project. The renv package will automatically run when you open the project. Upon your first use of my project, you will have to restore all the packages that I used by running renv::restore() in your R console. To do this, you might have to make sure that your version of R is sufficiently up-to-date. Also, you will need to be connected to the internet. For more information on the renv package, see these wonderful YouTube videos: 
+
+    -   (<https://youtu.be/Oen9xhEh8PY?si=wSyaMcTBm3LTK6OH>)
+
+    -    (<https://www.youtube.com/watch?v=yc7ZB4F_dc0>).
+
+-   If the renv workflow is not working, you can remove the renv folder and renv.lock files from the project and manually install packages. However, this is not recommended as you will not be using the same package versions as I used during my analysis. Finally, please note that the renv package makes note of the R version I used the last time I saved my files (4.5.1, although I was using 4.4.0 during paper writing… results don’t change), but it will not change your R version.
+
 -   This repository is also saved in Zenodo for long-term storage: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17835637.svg)](https://doi.org/10.5281/zenodo.17835637)

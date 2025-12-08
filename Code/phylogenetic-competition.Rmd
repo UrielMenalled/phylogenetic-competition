@@ -10,6 +10,9 @@ editor_options:
 ##Loading
 
 ```{r}
+#renv::restore() #you will want everything to run to get all package versions used in for this analysis and their descendants 
+renv::status() #you will want the message "No issues found -- the project is in a consistent state." See README file for more info.
+
 library(openxlsx)
 library(data.table)
 library(devtools)
