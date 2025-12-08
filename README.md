@@ -15,9 +15,9 @@ Data/
     ├── COOP2_weedsHighRes.xlsx  #Winter experiment, rep 1; both sites
     ├── COOP3_weedsHighRes.xlsx   #Summer experiment, rep 2; both sites
     ├── COOP4_weedsHighRes.xlsx  #Winter experiment, rep 2; both sites
-    ├── FamilyList.csv
-    ├── NameKey.xlsx
-    └── TraitsCOOPWeeds.xlsx
+    ├── FamilyList.csv  #List of family and common names
+    ├── NameKey.xlsx   #List of scientific and common names
+    └── TraitsCOOPWeeds.xlsx   #Summary of traits
 .gitignore
 LICENSE
 phylogenetic-competition.Rproj
@@ -26,7 +26,7 @@ README.md
 
 ## Data-specific information
 
-**COOP1_weedsHighRes.xlsx**
+### COOP1_weedsHighRes.xlsx
 
 a.  Number of variables: 30
 
@@ -71,7 +71,7 @@ c.  Variable List:
 
 d.  Missing data codes: blank cell
 
-**COOP2_weedsHighRes.xlsx**
+### COOP2_weedsHighRes.xlsx
 
 a.  Number of variables: 51
 
@@ -137,8 +137,7 @@ c.  Variable List:
 
 d.  Missing data codes: blank cell
 
-
-DATA-SPECIFIC INFORMATION FOR: **COOP3_weedsHighRes.xlsx**
+### COOP3_weedsHighRes.xlsx
 
 a.  Number of variables: 46
 
@@ -199,8 +198,7 @@ c.  Variable List:
 
 d.  Missing data codes: blank cell
 
-
-**COOP4_weedsHighRes.xlsx**
+### COOP4_weedsHighRes.xlsx
 
 a.  Number of variables: 50
 
@@ -265,8 +263,24 @@ c.  Variable List:
 
 d.  Missing data codes: blank cell
 
+### FamilyNames.csv
 
-DATA-SPECIFIC INFORMATION FOR: [COOPWeeds_Summer2.csv]
+a.  Number of variables: 2
+
+b.  Number of cases/rows: 480
+
+c.  Variable List:
+
+<!-- -->
+
+1.  `Family`: Character, family of species
+2.  `group`: Character, ecological group of family <!-- -->
+
+<!-- -->
+
+d.  Missing data codes: blank cell
+
+### NameKey.xlsx
 
 a.  Number of variables: 6
 
@@ -287,4 +301,10 @@ c.  Variable List:
 
 d.  Missing data codes: blank cell
 
-This repository is also saved in Zenodo for long-term storage: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17835637.svg)](https://doi.org/10.5281/zenodo.17835637)
+## Notes
+
+-   The weed names in the file 'COOPWeeds_NameKey.csv' are "valid" according to the world plants database, which was used on Sept. 23, 2022 to create the data frame.
+
+-   Due to peer reviewer feedback, "Rhamphospermum arvense" is referred to as "Sinapis arvensis" in the writing and figures of the article "Phylogenetic relatedness can influence cover crop-based weed suppression"
+
+-   This repository is also saved in Zenodo for long-term storage: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17835637.svg)](https://doi.org/10.5281/zenodo.17835637)
