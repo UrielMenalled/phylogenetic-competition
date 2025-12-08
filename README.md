@@ -17,7 +17,7 @@ Data/
     ├── COOP4_weedsHighRes.xlsx  #Winter experiment, rep 2; both sites
     ├── FamilyList.csv  #List of family and common names
     ├── NameKey.xlsx   #List of scientific and common names
-    └── TraitsCOOPWeeds.xlsx   #Summary of traits
+    └── TraitsCOOPWeeds.xlsx   #Trait data
 .gitignore
 LICENSE
 phylogenetic-competition.Rproj
