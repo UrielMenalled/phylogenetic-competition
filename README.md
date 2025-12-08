@@ -6,15 +6,15 @@ These files contain the data and code that [Menalled et al. (2023)](https://doi.
 
 ```         
 Code/
-    ├── COOP weed data analysis log.docx  #description of analysis
-    ├── phylogenetic-competition.md  #markdown of analysis
-    └── phylogenetic-competition.Rmd  #analysis code
+    ├── COOP weed data analysis log.docx   #Description of analysis
+    ├── phylogenetic-competition.md   #Markdown of analysis
+    └── phylogenetic-competition.Rmd   #Analysis code
 Data/
     ├── COOP weed data analysis log.docx
-    ├── COOP1_weedsHighRes.xlsx 
-    ├── COOP2_weedsHighRes.xlsx
-    ├── COOP3_weedsHighRes.xlsx
-    ├── COOP4_weedsHighRes.xlsx
+    ├── COOP1_weedsHighRes.xlsx   #Summer experiment, rep 1; both sites
+    ├── COOP2_weedsHighRes.xlsx  #Winter experiment, rep 1; both sites
+    ├── COOP3_weedsHighRes.xlsx   #Summer experiment, rep 2; both sites
+    ├── COOP4_weedsHighRes.xlsx  #Winter experiment, rep 2; both sites
     ├── FamilyList.csv
     ├── NameKey.xlsx
     └── TraitsCOOPWeeds.xlsx
@@ -26,7 +26,7 @@ README.md
 
 ## Data-specific information
 
-[**COOP1_weedsHighRes**]{.underline}
+**COOP1_weedsHighRes.xlsx**
 
 a.  Number of variables: 30
 
@@ -71,7 +71,7 @@ c.  Variable List:
 
 d.  Missing data codes: blank cell
 
-DATA-SPECIFIC INFORMATION FOR: [COOPWeeds_Winter1.csv]
+**COOP2_weedsHighRes.xlsx**
 
 a.  Number of variables: 51
 
@@ -137,7 +137,70 @@ c.  Variable List:
 
 d.  Missing data codes: blank cell
 
-DATA-SPECIFIC INFORMATION FOR: [COOPWeeds_Winter2.csv]
+
+DATA-SPECIFIC INFORMATION FOR: **COOP3_weedsHighRes.xlsx**
+
+a.  Number of variables: 46
+
+b.  Number of cases/rows: 40
+
+c.  Variable List:
+
+<!-- -->
+
+1.  `Trial`: Character, describes the fact that the data comes from the Summer 2 experiment
+2.  `Year`: Factor, sampling year
+3.  `Site`: Factor, location; Farm Hub = Hudson Valley Farm Hub, Musgrave = Cornell University Musgrave research farm
+4.  `Block`: Factor, field-block within site:years
+5.  `Plot`: Numeric, experimental unit of replication
+6.  `CoverCrop`: Factor, treatment name; Tilled = tilled control, Buckwheat = Buckwheat, SH = Sunn hemp, SS = sorghum sudangrass, SSxSH = sorghum sudangrass and Sunn hemp mix
+7.  `CoverCropBiomass`: Numeric, total cover crop biomass (g/0.5m<sup>2</sup>), comes from the sum of the three individual cover crop species
+8.  `sun.hemp`: Numeric, cover crop biomass (g/0.5m<sup>2</sup>)
+9.  `sorghum.sudangrass`: Numeric, cover crop biomass (g/0.5m<sup>2</sup>)
+10. `buckwheat`: Numeric, cover crop biomass (g/0.5m<sup>2</sup>)
+11. `volunteer.buckwheat`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+12. `smooth.crabgrass`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+13. `fall.panicum`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+14. `hairy.galinsoga`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+15. `barnyard.grass`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+16. `wild.mustard`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+17. `common.lambsquarters`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+18. `yellow.foxtail`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+19. `giant.foxtail`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+20. `horseweed`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+21. `witchgrass`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+22. `annual.fleabane`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+23. `redroot.pigweed`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+24. `lady's.thumb`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+25. `velvetleaf`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+26. `dandelion`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+27. `virginia.copperleaf`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+28. `red.clover`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+29. `common.chickweed`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+30. `annual.ragweed`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+31. `broadleaf.plantain`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+32. `annual.ryegrass`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+33. `powell.amaranth`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+34. `cereal.rye`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+35. `yellow.woodsorrel`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+36. `yellow.nutsedge`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+37. `annual.bluegrass`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+38. `green.foxtail`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+39. `wild.buckwheat`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+40. `timothy`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+41. `mouseear.chickweed`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+42. `corn.speedwell`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+43. `winter.pea`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+44. `perrenial.sowthistle`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+45. `large.crabgrass`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+46. `common.purslane`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
+
+<!-- -->
+
+d.  Missing data codes: blank cell
+
+
+**COOP4_weedsHighRes.xlsx**
 
 a.  Number of variables: 50
 
@@ -202,66 +265,6 @@ c.  Variable List:
 
 d.  Missing data codes: blank cell
 
-DATA-SPECIFIC INFORMATION FOR: [COOPWeeds_Summer2.csv]
-
-a.  Number of variables: 46
-
-b.  Number of cases/rows: 40
-
-c.  Variable List:
-
-<!-- -->
-
-1.  `Trial`: Character, describes the fact that the data comes from the Summer 2 experiment
-2.  `Year`: Factor, sampling year
-3.  `Site`: Factor, location; Farm Hub = Hudson Valley Farm Hub, Musgrave = Cornell University Musgrave research farm
-4.  `Block`: Factor, field-block within site:years
-5.  `Plot`: Numeric, experimental unit of replication
-6.  `CoverCrop`: Factor, treatment name; Tilled = tilled control, Buckwheat = Buckwheat, SH = Sunn hemp, SS = sorghum sudangrass, SSxSH = sorghum sudangrass and Sunn hemp mix
-7.  `CoverCropBiomass`: Numeric, total cover crop biomass (g/0.5m<sup>2</sup>), comes from the sum of the three individual cover crop species
-8.  `sun.hemp`: Numeric, cover crop biomass (g/0.5m<sup>2</sup>)
-9.  `sorghum.sudangrass`: Numeric, cover crop biomass (g/0.5m<sup>2</sup>)
-10. `buckwheat`: Numeric, cover crop biomass (g/0.5m<sup>2</sup>)
-11. `volunteer.buckwheat`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-12. `smooth.crabgrass`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-13. `fall.panicum`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-14. `hairy.galinsoga`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-15. `barnyard.grass`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-16. `wild.mustard`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-17. `common.lambsquarters`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-18. `yellow.foxtail`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-19. `giant.foxtail`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-20. `horseweed`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-21. `witchgrass`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-22. `annual.fleabane`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-23. `redroot.pigweed`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-24. `lady's.thumb`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-25. `velvetleaf`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-26. `dandelion`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-27. `virginia.copperleaf`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-28. `red.clover`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-29. `common.chickweed`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-30. `annual.ragweed`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-31. `broadleaf.plantain`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-32. `annual.ryegrass`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-33. `powell.amaranth`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-34. `cereal.rye`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-35. `yellow.woodsorrel`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-36. `yellow.nutsedge`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-37. `annual.bluegrass`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-38. `green.foxtail`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-39. `wild.buckwheat`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-40. `timothy`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-41. `mouseear.chickweed`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-42. `corn.speedwell`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-43. `winter.pea`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-44. `perrenial.sowthistle`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-45. `large.crabgrass`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-46. `common.purslane`: Numeric, weed biomass (g/0.5m<sup>2</sup>)
-
-<!-- -->
-
-d.  Missing data codes: blank cell
 
 DATA-SPECIFIC INFORMATION FOR: [COOPWeeds_Summer2.csv]
 
