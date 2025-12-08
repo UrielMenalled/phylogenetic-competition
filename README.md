@@ -306,6 +306,27 @@ c.  Variable List:
 
 d.  Missing data codes: blank cell
 
+### TraitsCOOPWeeds.xlsx
+
+a.  Number of variables: 6
+
+b.  Number of cases/rows: 52
+
+c.  Variable List:
+
+<!-- -->
+
+1.  `Species`: Character, Scientific name of
+2.  `Summer`: Boolian, variable indicating if species is a summer annual: 1 = yes, 0 = no
+3.  `Winter`: Boolian, variable indicating if species is a winter annual: 1 = yes, 0 = no
+4.  `Annual`: Boolian, variable indicating if species is an annual: 1 = yes, 0 = no
+5.  `Biennial`: Boolian, variable indicating if species is a biennial: 1 = yes, 0 = no
+6.  `Perennial`: Boolian, variable indicating if species is a perennial: 1 = yes, 0 = no
+
+<!-- -->
+
+d.  Missing data codes: blank cell
+
 ## Notes
 
 -   The weed names in the file 'COOPWeeds_NameKey.csv' are "valid" according to the world plants database, which was used on Sept. 23, 2022 to create the data frame.
