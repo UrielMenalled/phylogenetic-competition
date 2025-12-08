@@ -17,10 +17,16 @@ Data/
     ├── FamilyList.csv  #List of family and common names
     ├── NameKey.xlsx   #List of scientific and common names
     └── TraitsCOOPWeeds.xlsx   #Trait data
-.gitignore
-LICENSE
-phylogenetic-competition.Rproj
-README.md
+ renv 
+    ├──  .gitignore 
+    ├──  activate.R 
+    └──  settings.json 
+ .gitignore 
+ .Rprofile 
+ LICENSE 
+ phylogenetic-competition.Rproj 
+ README.md 
+ renv.lock 
 ```
 
 ## Data-specific information
