@@ -10,7 +10,6 @@ Code/
     ├── phylogenetic-competition.md   #Markdown of analysis
     └── phylogenetic-competition.Rmd   #Analysis code
 Data/
-    ├── COOP weed data analysis log.docx
     ├── COOP1_weedsHighRes.xlsx   #Summer experiment, rep 1; both sites
     ├── COOP2_weedsHighRes.xlsx  #Winter experiment, rep 1; both sites
     ├── COOP3_weedsHighRes.xlsx   #Summer experiment, rep 2; both sites
