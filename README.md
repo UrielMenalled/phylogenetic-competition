@@ -10,14 +10,13 @@ Code/
     ├── phylogenetic-competition.md   #Markdown of analysis
     └── phylogenetic-competition.Rmd   #Analysis code
 Data/
-    ├── COOP weed data analysis log.docx
     ├── COOP1_weedsHighRes.xlsx   #Summer experiment, rep 1; both sites
     ├── COOP2_weedsHighRes.xlsx  #Winter experiment, rep 1; both sites
     ├── COOP3_weedsHighRes.xlsx   #Summer experiment, rep 2; both sites
     ├── COOP4_weedsHighRes.xlsx  #Winter experiment, rep 2; both sites
     ├── FamilyList.csv  #List of family and common names
     ├── NameKey.xlsx   #List of scientific and common names
-    └── TraitsCOOPWeeds.xlsx   #Summary of traits
+    └── TraitsCOOPWeeds.xlsx   #Trait data
 .gitignore
 LICENSE
 phylogenetic-competition.Rproj
